@@ -131,10 +131,15 @@ dsh plugin --profile <profile> add dsh-plugin-tower
 - `dist-tags.latest` 也会滞后；用 `npm dist-tag add dsh-plugin-tower@<version> latest` 显式指定。
 - **已知坑**：直接用 API `PUT _attachments` 发布会产生「有元数据、无 tarball」的版本（0.3.0 即如此）。
   **一律用 npm CLI 发布**，不要手写 PUT。
-- 校验发布是否真的可用（不要只看 `npm view`）：
+- **校验发布的正确姿势（2026-11-21 踩过的坑）**：
+  1. `npm view dsh-plugin-tower version` —— 权威，反映真实 dist-tags；
+  2. `npm view dsh-plugin-tower versions` —— 确认版本已登记；
+  3. 真装一次：`npm i dsh-plugin-tower@<version>`（最快证明 artifact 可用）；
+  4. tarball 直连可能命中**过期 CDN**：`curl -H 'Cache-Control: no-cache' .../-/dsh-plugin-tower-<v>.tgz?x=1`
+     —— 裸 URL 404 但带 `?x=1` 返回 200，说明**已发布**、只是缓存未刷新。
   ```bash
-  curl -s -o /dev/null -w "%{http_code}\n" \
-    https://registry.npmjs.org/dsh-plugin-tower/-/dsh-plugin-tower-<version>.tgz   # 期望 200
+  npm view dsh-plugin-tower version          # 期望 0.4.0
+  npm i dsh-plugin-tower@0.4.0 --prefix /tmp/t   # 期望 added 1 package
   ```
 
 ## 4. 发布前自检（贴进 Release）
