@@ -1,0 +1,7 @@
+# dsh-plugin-tower —— 塔台：右侧栏「运行值守」入口
+#
+# 一个 insert 行即可挂载。Host 半提供 /dsh-tower/api 只读快照与三个显式动作，
+# Client 半在右侧栏注册 tower.monitor tab，并在输入框工具行留一个入口按钮。
+- insert:
+    - id: dsh-tower
+      name: 'dsh-plugin-tower'
