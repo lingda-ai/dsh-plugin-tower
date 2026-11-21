@@ -1,5 +1,9 @@
 # 塔台 · Tower
 
+[![verify](https://github.com/lingda-ai/dsh-plugin-tower/actions/workflows/verify.yml/badge.svg)](https://github.com/lingda-ai/dsh-plugin-tower/actions/workflows/verify.yml)
+
+> 源码镜像：[GitHub](https://github.com/lingda-ai/dsh-plugin-tower) · [Gitee](https://gitee.com/linzhengtong/dsh-plugin-tower) · npm `dsh-plugin-tower`
+
 **给「不止一个 agent 在跑」的人用的右侧栏值守台。**
 
 DSH 里 agent 会自己继续跑：目标（goal）会自动续轮、后台作业会自己跑几分钟、定时任务会自己开新会话。
