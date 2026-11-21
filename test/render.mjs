@@ -314,6 +314,7 @@ assert(joined.indexOf('v0.1.6') >= 0, '页脚渲染出版本号')
 assert(joined.indexOf('已收场') >= 0, '渲染出「已收场」分区')
 assert(joined.indexOf('作业历史') >= 0, '渲染出「作业历史」分区')
 assert(joined.indexOf('审计') >= 0, '渲染出「审计」分区')
+assert(joined.indexOf('值守报告') >= 0, '渲染出「值守报告」分区')
 assert(joined.indexOf('没有动静') >= 0, '渲染出空转提示')
 assert(joined.indexOf('通知') >= 0, '头部渲染出通知开关')
 

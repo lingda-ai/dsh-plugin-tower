@@ -426,6 +426,154 @@ function auditVerify() {
 }
 // #endregion
 
+// #region 值守报告（L3 治理：可交接的记录）
+/** 报告是给人看的，不能漏出原始枚举。 */
+const VERB_LABELS = { pause: '暂停', resume: '继续', complete: '完成', kill: '终止', run: '立即执行' }
+const JOB_LABELS = { completed: '已完成', killed: '已终止', failed: '失败', running: '运行中', stopping: '终止中' }
+const PHASE_LABELS = { active: '执行中', paused: '已暂停', blocked: '受阻', complete: '已完成' }
+
+function labelOf(table, raw) {
+  const key = String(raw || '')
+  return table[key] || key
+}
+
+/** 单行化：Markdown 列表项里不能出现换行。 */
+function oneLine(value, limit) {
+  return text(String(value || '').replace(/\s+/g, ' ').trim(), limit || 160)
+}
+
+function clockOf(ms) {
+  const date = new Date(Number(ms) || Date.now())
+  const pad = (value) => (value < 10 ? '0' + value : String(value))
+  return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())
+}
+
+function dayOf(ms) {
+  const date = new Date(Number(ms) || Date.now())
+  const pad = (value) => (value < 10 ? '0' + value : String(value))
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+}
+
+/**
+ * 把「现在 + 最近 N 小时」压成一份可交接的 Markdown。
+ * 纯读：不改任何状态，不写盘（除非审计本身已开启）。缺服务时对应小节写「无」，不报错。
+ */
+async function buildShiftReport(ctx, hours) {
+  const spanHours = Math.max(1, Math.min(168, Number(hours) || 24))
+  const now = Date.now()
+  const snapshot = await buildSnapshot(ctx, { lean: false })
+  const history = await collectJobHistory(ctx, 20, spanHours * 3600000)
+  const closed = await collectClosedGoals(ctx, 8)
+  const audit = auditStatus()
+  const verify = audit.enabled ? auditVerify() : null
+
+  const lines = []
+  lines.push('# 值守报告 · ' + dayOf(now) + ' ' + clockOf(now))
+  lines.push('')
+  lines.push('- 范围：最近 ' + spanHours + ' 小时')
+  lines.push('- 塔台版本：' + PLUGIN_VERSION)
+  lines.push(
+    '- 在飞 ' +
+      snapshot.counts.live +
+      ' · 执行中 ' +
+      snapshot.counts.running +
+      ' · 待处置 ' +
+      (snapshot.counts.urgent + snapshot.counts.waiting) +
+      ' · 后台 ' +
+      snapshot.counts.jobs +
+      ' · 定时 ' +
+      snapshot.counts.schedules,
+  )
+  lines.push('')
+
+  lines.push('## 一、待处置（需要人）')
+  if (snapshot.attention.length === 0) {
+    lines.push('')
+    lines.push('- 无')
+  } else {
+    lines.push('')
+    for (const item of snapshot.attention.slice(0, 10)) {
+      const level = item.level === 'urgent' ? '紧急' : '等待'
+      lines.push(
+        '- [' + level + '] ' + oneLine(item.label, 40) + '：' + oneLine(item.title, 120) + '（' + clockOf(item.at) + '）',
+      )
+      if (item.detail) lines.push('  - ' + oneLine(item.detail, 160))
+    }
+  }
+  lines.push('')
+
+  lines.push('## 二、本次处置（人点过且成功）')
+  const recent = snapshot.recent || []
+  if (recent.length === 0) {
+    lines.push('')
+    lines.push('- 无')
+  } else {
+    lines.push('')
+    for (const entry of recent.slice(0, 15)) {
+      lines.push(
+        '- ' + clockOf(entry.at) + ' ' + labelOf(VERB_LABELS, entry.verb) + ' · ' + oneLine(entry.label, 100) + '（' + oneLine(entry.outcome, 20) + '）',
+      )
+    }
+  }
+  lines.push('')
+
+  lines.push('## 三、后台作业（最近 ' + spanHours + ' 小时，已收口）')
+  if (!history.ok || history.jobs.length === 0) {
+    lines.push('')
+    lines.push('- 无' + (history.ok ? '' : '（' + oneLine(history.error, 80) + '）'))
+  } else {
+    lines.push('')
+    for (const job of history.jobs.slice(0, 15)) {
+      const seconds = Math.round((job.durationMs || 0) / 1000)
+      lines.push(
+        '- ' + clockOf(job.finishedAt) + ' ' + labelOf(JOB_LABELS, job.status) + ' · ' + oneLine(job.label, 80) + ' · ' + seconds + 's' + (job.detail ? ' · ' + oneLine(job.detail, 60) : '') + '（' + oneLine(job.cwdName, 40) + '）',
+      )
+    }
+    if (history.total > history.jobs.length) {
+      lines.push('- ……窗口内共 ' + history.total + ' 条，仅列最近 ' + history.jobs.length + ' 条')
+    }
+  }
+  lines.push('')
+
+  lines.push('## 四、已收场会话（带目标的）')
+  if (!closed.ok || closed.closed.length === 0) {
+    lines.push('')
+    lines.push('- 无' + (closed.ok ? '' : '（' + oneLine(closed.error, 80) + '）'))
+  } else {
+    lines.push('')
+    for (const row of closed.closed) {
+      const goal = row.goal || {}
+      lines.push(
+        '- ' + oneLine(row.cwdName, 40) + ' · ' + labelOf(PHASE_LABELS, goal.phase) + ' · ' + oneLine(goal.objective, 100) + ' · 第 ' + (goal.roundsStarted || 0) + '/' + (goal.maxGoalRounds || '∞') + ' 轮',
+      )
+    }
+  }
+  lines.push('')
+
+  lines.push('## 五、审计')
+  lines.push('')
+  if (!audit.enabled) {
+    lines.push('- 未开启（本地审计默认关闭）')
+  } else {
+    lines.push('- 记录中 · ' + audit.count + ' 条')
+    lines.push('- 哈希链：' + (verify && verify.ok ? '完整（head ' + String(verify.head).slice(0, 12) + '…）' : '校验失败（第 ' + (verify && verify.at) + ' 条：' + (verify && verify.reason) + '）'))
+    lines.push('- 路径：' + audit.path)
+  }
+  lines.push('')
+  lines.push('---')
+  lines.push('由塔台生成 · 本机只读快照 · 不含对话内容')
+
+  return {
+    ok: true,
+    markdown: lines.join('\n'),
+    generatedAt: now,
+    windowHours: spanHours,
+    version: PLUGIN_VERSION,
+    counts: snapshot.counts,
+  }
+}
+// #endregion
+
 /** 某个可选服务是否具备全部所需方法（用来区分「本来就没有」和「有了但变了」）。 */
 function hasMethods(ctx, name, methods) {
   const svc = service(ctx, name)
@@ -924,6 +1072,10 @@ async function handleRequest(ctx, req, res) {
         )
         return
       }
+      if (url.searchParams.has('report')) {
+        sendJson(res, 200, await buildShiftReport(ctx, url.searchParams.get('hours')))
+        return
+      }
       if (url.searchParams.has('audit')) {
         if (url.searchParams.has('download')) {
           const body = auditDownload()
@@ -994,4 +1146,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport }

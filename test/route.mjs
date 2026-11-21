@@ -234,6 +234,12 @@ assert(typeof audit.body.status.path === 'string' && audit.body.status.path.inde
 const auditVerify = await call('GET', '/dsh-tower/api?audit=1&verify=1', { host: '127.0.0.1:64700' })
 assert(auditVerify.body.ok === true && typeof auditVerify.body.verify.ok === 'boolean', '校验端点返回链状态')
 
+const report = await call('GET', '/dsh-tower/api?report=1&hours=24', { host: '127.0.0.1:64700' })
+assert(report.status === 200 && report.body.ok === true, '值守报告 200')
+assert(String(report.body.markdown).indexOf('# 值守报告') === 0, '报告 markdown 以标题开头')
+assert(String(report.body.markdown).indexOf('## 五、审计') >= 0, '报告包含审计小节')
+assert(report.body.windowHours === 24, '报告窗口参数生效')
+
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')
 

@@ -56,6 +56,16 @@ window.__ModuleLoader__.load({
         'cap.log': '作业日志',
         'cap.schedule': '定时',
         'cap.sessions': '会话',
+        'section.report': '值守报告',
+        'report.loading': '生成中…',
+        'report.failed': '生成失败',
+        'report.preview': '预览',
+        'report.hidePreview': '收起预览',
+        'report.copy': '复制',
+        'report.download': '下载 .md',
+        'report.copied': '已复制',
+        'report.window': '最近 {n} 小时',
+        'report.note': '把这段时间压成一页，可直接贴进周报或交接群',
         'section.audit': '审计',
         'audit.on': '记录中',
         'audit.off': '未开启',
@@ -193,6 +203,16 @@ window.__ModuleLoader__.load({
         'cap.log': 'Job log',
         'cap.schedule': 'Schedules',
         'cap.sessions': 'Sessions',
+        'section.report': 'Shift report',
+        'report.loading': 'generating…',
+        'report.failed': 'generation failed',
+        'report.preview': 'Preview',
+        'report.hidePreview': 'Hide preview',
+        'report.copy': 'Copy',
+        'report.download': 'Download .md',
+        'report.copied': 'copied',
+        'report.window': 'last {n}h',
+        'report.note': 'one page you can paste into a weekly report or handoff',
         'section.audit': 'Audit',
         'audit.on': 'recording',
         'audit.off': 'off',
@@ -1300,6 +1320,16 @@ window.__ModuleLoader__.load({
         const [notifyOn, setNotifyOn] = React.useState(readNotifyOn)
         const [notifyNote, setNotifyNote] = React.useState('')
         const [history, setHistory] = React.useState({ loading: false, rows: [], error: '', loaded: false, total: 0, scanned: 0 })
+        const [report, setReport] = React.useState({
+          loading: false,
+          loaded: false,
+          markdown: '',
+          generatedAt: 0,
+          windowHours: 24,
+          showPreview: false,
+          copied: false,
+          error: '',
+        })
         const [audit, setAudit] = React.useState({
           loading: false,
           loaded: false,
@@ -1483,6 +1513,60 @@ window.__ModuleLoader__.load({
         const recent = snapshot.recent || []
         const historyExpanded = sectionOpen('history', false)
         const auditExpanded = sectionOpen('audit', false)
+        const reportExpanded = sectionOpen('report', false)
+
+        const loadReport = React.useCallback(async () => {
+          setReport((prev) => Object.assign({}, prev, { loading: true, error: '' }))
+          try {
+            const response = await fetch(API + '?report=1&hours=24', { cache: 'no-store', headers: { accept: 'application/json' } })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            setReport((prev) =>
+              Object.assign({}, prev, {
+                loading: false,
+                loaded: true,
+                markdown: String(data.markdown || ''),
+                generatedAt: Number(data.generatedAt) || Date.now(),
+                windowHours: Number(data.windowHours) || 24,
+                error: '',
+              }),
+            )
+          } catch (error) {
+            setReport((prev) => Object.assign({}, prev, { loading: false, loaded: true, error: String(error && error.message ? error.message : error) }))
+          }
+        }, [])
+
+        function downloadReport() {
+          try {
+            const blob = new Blob([report.markdown || ''], { type: 'text/markdown;charset=utf-8' })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'tower-report-' + new Date(report.generatedAt || Date.now()).toISOString().slice(0, 10) + '.md'
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            window.setTimeout(() => URL.revokeObjectURL(url), 2000)
+          } catch {
+            /* 下载失败不影响面板 */
+          }
+        }
+
+        function copyReport() {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(report.markdown || '')
+              setReport((prev) => Object.assign({}, prev, { copied: true }))
+              window.setTimeout(() => setReport((prev) => Object.assign({}, prev, { copied: false })), 1400)
+            }
+          } catch {
+            /* 复制失败不影响面板 */
+          }
+        }
+
+        React.useEffect(() => {
+          if (reportExpanded && !report.loaded && !report.loading) loadReport()
+        }, [reportExpanded, report.loaded, report.loading, loadReport])
 
         const loadAudit = React.useCallback(async (withVerify) => {
           setAudit((prev) => Object.assign({}, prev, { loading: true, error: '' }))
@@ -2363,6 +2447,65 @@ window.__ModuleLoader__.load({
                         )
                 : null,
               closedExpanded ? h('div', { style: { fontSize: 9.5, color: T.faint, paddingTop: 2 } }, t('closed.note')) : null,
+            ),
+
+            // ⑦ 值守报告（L3：可交接的一页）
+            h(
+              Section,
+              {
+                title: t('section.report'),
+                count: 0,
+                kind: 'schedules',
+                trailing: h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'twr-plus',
+                    title: reportExpanded ? t('act.collapse') : t('act.expand'),
+                    onClick: () => toggleSection('report', false),
+                  },
+                  reportExpanded ? '−' : '+',
+                ),
+              },
+              reportExpanded
+                ? report.loading && !report.loaded
+                  ? h('div', { style: { padding: '2px 0' } }, h(Skeleton, null))
+                  : report.error
+                    ? h('div', { style: { fontSize: 10.5, color: T.bad, lineHeight: 1.5 } }, t('report.failed') + '：' + report.error)
+                    : h(
+                        'div',
+                        { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 } },
+                        h(
+                          'div',
+                          { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: T.faint, flexWrap: 'wrap' } },
+                          h('span', { className: 'twr-num' }, t('report.window', { n: report.windowHours })),
+                          h('span', { className: 'twr-num' }, report.generatedAt ? formatClock(report.generatedAt) : ''),
+                          h('span', { style: { flex: 1 } }),
+                          h(
+                            Button,
+                            {
+                              tone: 'ghost',
+                              onClick: () =>
+                                setReport((prev) => Object.assign({}, prev, { showPreview: !prev.showPreview })),
+                            },
+                            report.showPreview ? t('report.hidePreview') : t('report.preview'),
+                          ),
+                          h(Button, { tone: 'ghost', onClick: copyReport }, report.copied ? t('report.copied') : t('report.copy')),
+                          h(Button, { tone: 'accent', onClick: downloadReport }, t('report.download')),
+                        ),
+                        report.showPreview
+                          ? h(
+                              'pre',
+                              {
+                                className: 'twr-log',
+                                style: { maxHeight: 260, fontSize: 9.5, lineHeight: 1.55, whiteSpace: 'pre-wrap' },
+                              },
+                              report.markdown,
+                            )
+                          : null,
+                        h('div', { style: { fontSize: 9.5, color: T.faint, lineHeight: 1.5 } }, t('report.note')),
+                      )
+                : null,
             ),
 
             // 页脚
