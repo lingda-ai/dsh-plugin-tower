@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.1.2` |
+| 包 | `dsh-plugin-tower@0.1.3` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
-| 模块代（当前） | `dsh-plugin-tower+0.1.2+6affd6c677dc` |
-| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d` |
+| 模块代（当前） | `dsh-plugin-tower+0.1.3+9a8aba3592e2` |
+| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc` |
 | Config schema | 无（本插件不暴露配置项） |
 | 用户补丁层 | **未被修改**（仅经 bundle 通道挂载） |
 
