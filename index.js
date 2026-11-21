@@ -14,7 +14,7 @@
 
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
-import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync } from 'node:fs'
+import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -298,6 +298,101 @@ async function collectJobHistory(ctx, limit, windowMs) {
   }
 }
 
+/**
+ * 账本成本（可选集成）。
+ *
+ * 隔离契约：
+ *   - **只读** `~/.dsh/ledger/*.json`，不 import 账本、不加依赖、不要求任何服务；
+ *   - 目录不存在 / 版本不符 / 解析失败 → 视为「没有这个能力」，成本节整段不出现；
+ *   - 双模：快照带 `window` 就用窗口口径，否则用累计口径，**并把口径写进报告**。
+ */
+const LEDGER_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'ledger')
+const LEDGER_MAX_FILES = 40
+const LEDGER_STALE_MS = 10 * 60 * 1000
+
+function readLedgerCosts(windowMs, now) {
+  let entries = []
+  try {
+    entries = readdirSync(LEDGER_DIR).filter((name) => name.endsWith('.json'))
+  } catch {
+    return { available: false, reason: 'no-dir' }
+  }
+  if (entries.length === 0) return { available: false, reason: 'empty' }
+
+  const files = []
+  for (const name of entries.slice(0, LEDGER_MAX_FILES)) {
+    const path = join(LEDGER_DIR, name)
+    let stat = null
+    let parsed = null
+    try {
+      stat = statSync(path)
+      parsed = JSON.parse(readFileSync(path, 'utf8'))
+    } catch {
+      continue
+    }
+    if (!parsed || parsed.version !== 1) continue
+    const totals = parsed.totals || {}
+    const cost = totals.cost || {}
+    if (typeof cost.amount !== 'number' || typeof cost.currency !== 'string') continue
+    const lastAt = Date.parse(parsed.generatedAt || '')
+    const lastAtMs = Number.isFinite(lastAt) ? lastAt : Number(stat.mtimeMs) || 0
+    if (lastAtMs > 0 && now - lastAtMs > windowMs) continue // 窗口内没活跃过就不计入
+    const windowed = parsed.window && typeof parsed.window === 'object' && typeof parsed.window.cost === 'number'
+    files.push({
+      sessionId: String(parsed.sessionId || name),
+      currency: cost.currency,
+      amountTotal: Number(cost.amount) || 0,
+      amountWindow: windowed ? Number(parsed.window.cost) : null,
+      saved: Number((totals.saved && totals.saved.amount) || 0),
+      entriesTotal: Number(totals.entries) || 0,
+      entriesWindow: windowed ? Number(parsed.window.entries) || 0 : null,
+      unknownTotal: Number(cost.unknownEntries) || 0,
+      unknownWindow: windowed ? Number(parsed.window.unknownEntries) || 0 : null,
+      truncated: parsed.truncated === true,
+      windowed,
+      lastAt: lastAtMs,
+    })
+  }
+  if (files.length === 0) return { available: false, reason: 'unusable' }
+
+  const currencies = new Set(files.map((file) => file.currency))
+  if (currencies.size > 1) return { available: false, reason: 'multi-currency' }
+
+  // 口径要么全是窗口、要么全是累计：混算出来的数字没有意义。
+  const windowedAll = files.every((file) => file.windowed)
+  let amount = 0
+  let saved = 0
+  let calls = 0
+  let unknown = 0
+  let truncated = false
+  let newest = 0
+  let staleFiles = 0
+  for (const file of files) {
+    amount += windowedAll ? Number(file.amountWindow) || 0 : file.amountTotal
+    saved += file.saved
+    calls += windowedAll ? Number(file.entriesWindow) || 0 : file.entriesTotal
+    unknown += windowedAll ? Number(file.unknownWindow) || 0 : file.unknownTotal
+    truncated = truncated || file.truncated
+    newest = Math.max(newest, file.lastAt)
+    if (now - file.lastAt > LEDGER_STALE_MS) staleFiles += 1
+  }
+
+  return {
+    available: true,
+    currency: files[0].currency,
+    amount: Math.round(amount * 1e6) / 1e6,
+    saved: Math.round(saved * 1e6) / 1e6,
+    calls,
+    unknown,
+    sessions: files.length,
+    truncated,
+    windowed: windowedAll,
+    newestAt: newest,
+    stale: staleFiles > 0,
+    staleAll: staleFiles === files.length,
+  }
+}
+
 /** 插件自己的数据目录（策略、审计都放这里；不碰用户的代码工作区）。 */
 const TOWER_DATA_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'tower')
 
@@ -316,6 +411,7 @@ const DEFAULT_POLICY = {
   historyHours: 24,
   historyLimit: 20,
   notifyOnlyUrgent: true,
+  includeCost: true,
   autoPauseEnabled: false,
   autoPauseAfterMinutes: 45,
 }
@@ -336,6 +432,7 @@ function normalizePolicy(raw) {
     historyHours: clampNumber(source.historyHours, DEFAULT_POLICY.historyHours, 1, 168),
     historyLimit: clampNumber(source.historyLimit, DEFAULT_POLICY.historyLimit, 1, 100),
     notifyOnlyUrgent: source.notifyOnlyUrgent !== false,
+    includeCost: source.includeCost !== false,
     autoPauseEnabled: auto.enabled === true,
     autoPauseAfterMinutes: clampNumber(auto.afterIdleMinutes, DEFAULT_POLICY.autoPauseAfterMinutes, 5, 1440),
   }
@@ -578,6 +675,30 @@ async function buildShiftReport(ctx, hours) {
     }
   }
   lines.push('')
+
+  const ledger = readLedgerCosts(spanHours * 3600000, now)
+  if (ledger.available && readPolicy().includeCost !== false) {
+    lines.push('## 成本（来自账本）')
+    lines.push('')
+    const basis = ledger.windowed
+      ? '窗口内增量（账本自带 window 字段）'
+      : '这些会话自开始以来的累计（账本未提供窗口增量，口径偏大）'
+    const stale = ledger.stale ? (ledger.staleAll ? ' · **数据可能已过期**' : ' · **部分会话数据可能已过期**') : ''
+    lines.push(
+      '- 合计 ' +
+        (ledger.currency === 'CNY' ? '¥' : ledger.currency + ' ') +
+        ledger.amount.toFixed(4) +
+        ' / ' +
+        ledger.calls +
+        ' 次调用 · 缓存已省 ' +
+        (ledger.currency === 'CNY' ? '¥' : ledger.currency + ' ') +
+        ledger.saved.toFixed(2),
+    )
+    lines.push('- 口径：' + basis + ' · 按本地费率估算' + (ledger.unknown > 0 ? ' · 其中 ' + ledger.unknown + ' 条费率未知' : ''))
+    lines.push('- 涉及会话 ' + ledger.sessions + ' 个 · 数据时间 ' + clockOf(ledger.newestAt) + stale)
+    if (ledger.truncated) lines.push('- 注意：至少一个账本快照被截断（truncated），合计可能偏低')
+    lines.push('')
+  }
 
   lines.push('## 三、后台作业（最近 ' + spanHours + ' 小时，已收口）')
   if (!history.ok || history.jobs.length === 0) {
@@ -1249,4 +1370,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts }
