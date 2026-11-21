@@ -170,6 +170,7 @@ assert(pause.status === 200 && pause.body.ok === true && pause.body.result.phase
 const capsSnap = await call('GET', '/dsh-tower/api?counts=1', { host: '127.0.0.1:64700' })
 assert(/^\d+\.\d+\.\d+$/.test(String(capsSnap.body.version)), '快照带插件版本号')
 assert(capsSnap.body.caps && capsSnap.body.caps.goals === true && capsSnap.body.caps.log === true, '能力自检全绿')
+assert(capsSnap.body.policy && capsSnap.body.policy.idleMinutes === 20, '快照带策略（默认 20 分钟）')
 assert(lean.body.caps && lean.body.caps.jobs === true, 'lean 包同样带能力自检')
 
 const afterPauseSnap = await call('GET', '/dsh-tower/api', { host: '127.0.0.1:64700' })

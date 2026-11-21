@@ -145,13 +145,13 @@ dsh plugin --profile <profile> add dsh-plugin-tower
 ## 4. 发布前自检（贴进 Release）
 
 - [ ] `node test/smoke.mjs` 21 条 PASS
-- [ ] `node test/route.mjs` 37 条 PASS
+- [ ] `node test/route.mjs` 42 条 PASS
 - [ ] `node test/closed.mjs` 15 条 PASS
 - [ ] `node test/wiring.mjs` 14 条 PASS
-- [ ] `node test/render.mjs` 31 条 PASS
+- [ ] `node test/render.mjs` 33 条 PASS
 - [ ] `node test/audit.mjs` 12 条 PASS
 - [ ] `node test/idle.mjs` 8 条 PASS
-- [ ] `node test/notify.mjs` 7 条 PASS
+- [ ] `node test/notify.mjs` 9 条 PASS
 - [ ] `node test/history.mjs` 14 条 PASS
 - [ ] 重启后 `POST /dsh-tower/api` 返回 JSON（不是 405）
 - [ ] 右栏 tab 可见、输入框按钮带角标

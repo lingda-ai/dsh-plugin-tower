@@ -56,6 +56,10 @@ window.__ModuleLoader__.load({
         'cap.log': '作业日志',
         'cap.schedule': '定时',
         'cap.sessions': '会话',
+        'policy.line': '策略：闲置 {idle} 分钟判空转 · 历史窗口 {hours} 小时 · 自动暂停{auto}',
+        'policy.autoOn': '开（超 {n} 分钟）',
+        'policy.autoOff': '关',
+        'policy.path': '策略文件（可选，改完即生效，无需重启）：$DSH_HOME/.dsh/tower/policy.json',
         'section.report': '值守报告',
         'report.loading': '生成中…',
         'report.failed': '生成失败',
@@ -203,6 +207,10 @@ window.__ModuleLoader__.load({
         'cap.log': 'Job log',
         'cap.schedule': 'Schedules',
         'cap.sessions': 'Sessions',
+        'policy.line': 'policy: idle {idle}m · history {hours}h · auto-pause {auto}',
+        'policy.autoOn': 'on (after {n}m)',
+        'policy.autoOff': 'off',
+        'policy.path': 'policy file (optional, hot-reloaded): $DSH_HOME/.dsh/tower/policy.json',
         'section.report': 'Shift report',
         'report.loading': 'generating…',
         'report.failed': 'generation failed',
@@ -732,10 +740,12 @@ window.__ModuleLoader__.load({
      * 哪些待处置项值得弹通知：只弹 urgent、6 小时内同一个 key 只弹一次。
      * 纯函数，便于离线断言（真机弹窗无法在无浏览器环境下验证）。
      */
-    function notificationCandidates(attention, seen, now) {
+    function notificationCandidates(attention, seen, now, onlyUrgent) {
       const out = []
+      const urgentOnly = onlyUrgent !== false
       for (const item of attention || []) {
-        if (!item || item.level !== 'urgent') continue
+        if (!item) continue
+        if (urgentOnly && item.level !== 'urgent') continue
         const key = [item.code, item.sessionId, item.jobId || ''].join(':')
         const at = Number(seen && seen[key]) || 0
         if (at > 0 && now - at < NOTIFY_WINDOW_MS) continue
@@ -2201,6 +2211,19 @@ window.__ModuleLoader__.load({
                         : null,
                       h('div', { style: { fontSize: 9, color: T.faint, wordBreak: 'break-all' } }, audit.path || ''),
                       h('div', { style: { fontSize: 9.5, color: T.faint, lineHeight: 1.5 } }, t('audit.note')),
+                      h(
+                        'div',
+                        { style: { fontSize: 9.5, color: T.faint, lineHeight: 1.5, marginTop: 2 } },
+                        t('policy.line', {
+                          idle: (snapshot.policy && snapshot.policy.idleMinutes) || 20,
+                          hours: (snapshot.policy && snapshot.policy.historyHours) || 24,
+                          auto:
+                            snapshot.policy && snapshot.policy.autoPauseEnabled
+                              ? t('policy.autoOn', { n: snapshot.policy.autoPauseAfterMinutes })
+                              : t('policy.autoOff'),
+                        }),
+                      ),
+                      h('div', { style: { fontSize: 9, color: T.faint, lineHeight: 1.5 } }, t('policy.path')),
                     )
                 : null,
             ),
@@ -2664,7 +2687,7 @@ window.__ModuleLoader__.load({
           if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
           if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && document.hasFocus()) return
           const seen = readNotified()
-          const fresh = notificationCandidates(snapshot.attention, seen, Date.now())
+          const fresh = notificationCandidates(snapshot.attention, seen, Date.now(), !snapshot.policy || snapshot.policy.notifyOnlyUrgent !== false)
           if (fresh.length === 0) return
           for (const row of fresh) {
             if (notifiedNow.has(row.key)) continue

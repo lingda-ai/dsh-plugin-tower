@@ -301,6 +301,40 @@ job/settled    { …同上…, finishedAt, status:'completed'|'killed'|'failed',
 
 用临时 `DSH_HOME` 沙箱，不碰真实审计目录。
 
+## 7.15 0.6.0 策略文件 + 与账本插件共存验证
+
+### 策略文件
+
+`$DSH_HOME/.dsh/tower/policy.json`（可选；不存在即用保守默认）。按 mtime 失效缓存，**改完即生效**。
+
+| 字段 | 默认 | 作用 |
+|---|---|---|
+| `idleMinutes` | 20 | 多久无提交事件判为「可能空转」 |
+| `historyHours` / `historyLimit` | 24 / 20 | 作业历史窗口与条数 |
+| `notifyOnlyUrgent` | true | 通知是否只弹紧急项 |
+| `autoPause.enabled` | **false** | 超时自动暂停目标 |
+| `autoPause.afterIdleMinutes` | 45 | 自动暂停阈值 |
+
+自动暂停的三条约束（都已断言）：只对 `phase==='active'`、当前没在跑、且 `lastEventAt` 超过阈值的目标动作；
+每次动作记入处置历史与审计（`verb=auto-pause`）；冲突或不可暂停时静默跳过、不重试。
+
+`test/policy.mjs` 13 条：默认值 / 下限上限夹取 / 非法类型退回 / 文件生效 / idleMinutes=5 时 10 分钟能报空转 /
+默认关闭时不动手 / 开启后 60 分钟被暂停 / 快照报告 autoPaused / 记入处置 / **正在跑的目标不暂停**。
+
+### 与账本（dsh-plugin-ledger）共存验证
+
+两个插件同 profile、同右栏、同一宿主进程，实测互不干扰：
+
+| 检查项 | 证据 |
+|---|---|
+| 右栏 tab 共存 | `sidebar.right.pane.tab` 共 17 个占用者，`@lingda-ai/ledger` 与 `dsh-plugin-tower` 均 `active: true` |
+| 账本仍活着 | 账本快照 `~/.dsh/ledger/session-bc835d33-….json` 在检查时 **2 秒前**刚更新（12,210 字节） |
+| 数据目录不重叠 | 账本写 `~/.dsh/ledger/`；塔台写 `~/.dsh/tower/`。检查时 `tower` **目录尚未创建** —— 印证「审计默认关闭时不落盘」 |
+| 路由不冲突 | 塔台唯一路由 `/dsh-tower/api`；账本走 `workspaceFiles` 读工作区 JSON，不注册 HTTP 路由 |
+| 样式不冲突 | 塔台所有类名 `.twr-` 前缀；账本自成一体 |
+
+结论：**共存无回归**。塔台新增的 section 都在自己的 tab 内，不触碰账本的 tab 与其快照文件。
+
 ## 8. 你现在需要做的事
 
 1. **刷新页面**看 0.1.1 的空态与航班卡信息。

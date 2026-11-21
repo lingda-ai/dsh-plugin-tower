@@ -14,7 +14,7 @@
 
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
-import { mkdirSync, appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -268,8 +268,9 @@ async function collectJobHistory(ctx, limit, windowMs) {
   }
   const snaps = await persistence.list()
   if (!Array.isArray(snaps)) return { ok: false, error: '会话列表不可用' }
-  const want = Math.max(1, Math.min(HISTORY_LIMIT, Number(limit) || HISTORY_LIMIT))
-  const span = Number(windowMs) > 0 ? Number(windowMs) : HISTORY_WINDOW_MS
+  const policy = readPolicy()
+  const want = Math.max(1, Math.min(HISTORY_LIMIT, Number(limit) || policy.historyLimit))
+  const span = Number(windowMs) > 0 ? Number(windowMs) : policy.historyHours * 3600000
   const since = Date.now() - span
   const candidates = [...snaps]
     .sort((a, b) => (Number(b.header.createdAt) || 0) - (Number(a.header.createdAt) || 0))
@@ -297,6 +298,63 @@ async function collectJobHistory(ctx, limit, windowMs) {
   }
 }
 
+/** 插件自己的数据目录（策略、审计都放这里；不碰用户的代码工作区）。 */
+const TOWER_DATA_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'tower')
+
+// #region 策略（L3 治理：阈值可配置）
+/**
+ * 策略文件：$DSH_HOME/.dsh/tower/policy.json（可选，不存在即用默认值）。
+ * 改完即生效（按 mtime 失效缓存），不需要重启。
+ *
+ * 默认值刻意保守：自动暂停 **默认关闭**，且要求目标处于 active 且长时间无提交事件。
+ * 自动动作会记入处置历史与审计（verb = auto-pause），不做静默改动。
+ */
+const POLICY_FILE = join(TOWER_DATA_DIR, 'policy.json')
+
+const DEFAULT_POLICY = {
+  idleMinutes: 20,
+  historyHours: 24,
+  historyLimit: 20,
+  notifyOnlyUrgent: true,
+  autoPauseEnabled: false,
+  autoPauseAfterMinutes: 45,
+}
+
+let policyCache = { mtimeMs: -1, value: DEFAULT_POLICY }
+
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
+}
+
+function normalizePolicy(raw) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const auto = source.autoPause && typeof source.autoPause === 'object' ? source.autoPause : {}
+  return {
+    idleMinutes: clampNumber(source.idleMinutes, DEFAULT_POLICY.idleMinutes, 1, 1440),
+    historyHours: clampNumber(source.historyHours, DEFAULT_POLICY.historyHours, 1, 168),
+    historyLimit: clampNumber(source.historyLimit, DEFAULT_POLICY.historyLimit, 1, 100),
+    notifyOnlyUrgent: source.notifyOnlyUrgent !== false,
+    autoPauseEnabled: auto.enabled === true,
+    autoPauseAfterMinutes: clampNumber(auto.afterIdleMinutes, DEFAULT_POLICY.autoPauseAfterMinutes, 5, 1440),
+  }
+}
+
+function readPolicy() {
+  try {
+    const stat = statSync(POLICY_FILE)
+    if (stat.mtimeMs === policyCache.mtimeMs) return policyCache.value
+    const value = normalizePolicy(JSON.parse(readFileSync(POLICY_FILE, 'utf8')))
+    policyCache = { mtimeMs: stat.mtimeMs, value }
+    return value
+  } catch {
+    policyCache = { mtimeMs: -1, value: DEFAULT_POLICY }
+    return DEFAULT_POLICY
+  }
+}
+// #endregion
+
 // #region 审计（L4 起点）
 /**
  * 本地审计日志：**默认关闭**。开启后把「人点过且成功」的动作追加成 JSONL，
@@ -305,7 +363,7 @@ async function collectJobHistory(ctx, limit, windowMs) {
  * 位置：$DSH_HOME/.dsh/tower/（与插件自身状态放一起，不写用户的代码工作区）
  * 关闭时一行都不写；开启是用户的显式动作，不是默认行为。
  */
-const AUDIT_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'tower')
+const AUDIT_DIR = TOWER_DATA_DIR
 const AUDIT_STATE_FILE = join(AUDIT_DIR, 'audit.json')
 const AUDIT_LOG_FILE = join(AUDIT_DIR, 'audit.jsonl')
 
@@ -428,7 +486,7 @@ function auditVerify() {
 
 // #region 值守报告（L3 治理：可交接的记录）
 /** 报告是给人看的，不能漏出原始枚举。 */
-const VERB_LABELS = { pause: '暂停', resume: '继续', complete: '完成', kill: '终止', run: '立即执行' }
+const VERB_LABELS = { pause: '暂停', resume: '继续', complete: '完成', kill: '终止', run: '立即执行', 'auto-pause': '自动暂停' }
 const JOB_LABELS = { completed: '已完成', killed: '已终止', failed: '失败', running: '运行中', stopping: '终止中' }
 const PHASE_LABELS = { active: '执行中', paused: '已暂停', blocked: '受阻', complete: '已完成' }
 
@@ -470,7 +528,11 @@ async function buildShiftReport(ctx, hours) {
   const lines = []
   lines.push('# 值守报告 · ' + dayOf(now) + ' ' + clockOf(now))
   lines.push('')
+  const effective = readPolicy()
   lines.push('- 范围：最近 ' + spanHours + ' 小时')
+  lines.push(
+    '- 策略：闲置 ' + effective.idleMinutes + ' 分钟判空转 · 自动暂停' + (effective.autoPauseEnabled ? '开启（超 ' + effective.autoPauseAfterMinutes + ' 分钟）' : '关闭'),
+  )
   lines.push('- 塔台版本：' + PLUGIN_VERSION)
   lines.push(
     '- 在飞 ' +
@@ -746,8 +808,44 @@ function collectFlights(ctx, now) {
   return flights
 }
 
+/**
+ * 自动暂停：策略显式开启时才动作，且要求「目标 active + 当前没在跑 + 长时间无提交事件」。
+ * 每次动作都记入处置历史与审计（verb=auto-pause），不做静默改动。
+ * 在快照构建时惰性评估——因此它只在宿主被人/面板轮询时发生，不额外起定时器。
+ */
+function maybeAutoPause(ctx, flights, policy, now) {
+  if (!policy || policy.autoPauseEnabled !== true) return 0
+  const goalsSvc = service(ctx, 'goals')
+  const agentsSvc = service(ctx, 'agents')
+  if (typeof goalsSvc?.pause !== 'function' || typeof agentsSvc?.get !== 'function') return 0
+  const limitMs = policy.autoPauseAfterMinutes * 60000
+  let paused = 0
+  for (const flight of flights) {
+    const goal = flight.goal
+    if (!goal || goal.phase !== 'active' || flight.running) continue
+    if (!flight.lastEventAt || now - flight.lastEventAt < limitMs) continue
+    const agent = attempt(() => agentsSvc.get(flight.sessionId), null)
+    if (!agent) continue
+    try {
+      const view = goalsSvc.pause(agent, { id: goal.id, revision: goal.revision })
+      recordAction({
+        at: Date.now(),
+        verb: 'auto-pause',
+        sessionId: flight.sessionId,
+        label: text(view && view.objective, 80),
+        outcome: 'ok',
+      })
+      flight.goal = projectGoal(view)
+      paused += 1
+    } catch {
+      /* 版本冲突或已不可暂停：跳过，不重试、不放大影响 */
+    }
+  }
+  return paused
+}
+
 /** 「需要你」只由确定性规则产生：没有模型、没有猜测、没有阈值玄学。 */
-function collectAttention(flights, now) {
+function collectAttention(flights, now, policy) {
   const items = []
   for (const flight of flights) {
     if (flight.goal && flight.goal.phase === 'blocked') {
@@ -774,7 +872,8 @@ function collectAttention(flights, now) {
     }
     if (flight.goal && flight.goal.phase === 'active' && !flight.running && flight.lastEventAt) {
       const idleMs = now - flight.lastEventAt
-      if (idleMs > IDLE_MS) {
+      const idleLimit = (policy ? policy.idleMinutes : 20) * 60000
+      if (idleMs > idleLimit) {
         items.push({
           level: 'waiting',
           code: 'goal.idle',
@@ -835,8 +934,10 @@ async function collectSchedules(ctx, now) {
 
 async function buildSnapshot(ctx, options) {
   const now = Date.now()
+  const policy = readPolicy()
   const flights = collectFlights(ctx, now)
-  const attention = collectAttention(flights, now)
+  const autoPaused = maybeAutoPause(ctx, flights, policy, now)
+  const attention = collectAttention(flights, now, policy)
   const schedules = options.lean ? [] : await collectSchedules(ctx, now)
   const counts = {
     live: flights.length,
@@ -855,6 +956,8 @@ async function buildSnapshot(ctx, options) {
     at: now,
     version: PLUGIN_VERSION,
     caps: collectCapabilities(ctx),
+    policy,
+    autoPaused,
     counts,
     attention,
     flights: options.lean ? [] : flights,
@@ -1146,4 +1249,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause }

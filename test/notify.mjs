@@ -49,6 +49,10 @@ const old = {}
 old[fresh[0].key] = now - 7 * 60 * 60 * 1000
 assert(candidates(attention, old, now).length === 2, '超过 6 小时窗口后允许再弹')
 
+const withWaiting = candidates(attention, {}, now, false)
+assert(withWaiting.length === 4, 'notifyOnlyUrgent=false 时等待项也弹')
+assert(candidates(attention, {}, now, true).length === 2, 'notifyOnlyUrgent=true 时只弹 urgent')
+
 assert(candidates([], {}, now).length === 0, '空列表不弹')
 assert(candidates(null, {}, now).length === 0, 'null 安全')
 
