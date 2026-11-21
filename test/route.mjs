@@ -60,9 +60,9 @@ const fakeCtx = {
           { header: { id: 'session-closed', createdAt: now - 1000, cwd: '/tmp/projects/closed-demo' }, revision: 'rev-c1' },
           { header: { id: 'session-a', createdAt: now, cwd: '/tmp/demo' }, revision: 'rev-live' },
         ],
-        open: async () => ({
+        open: async (id) => ({
           read: async () => ({
-            events: [
+            events: id !== 'session-closed' ? [] : [
               {
                 type: 'goal/change',
                 time: now - 500,
@@ -74,6 +74,26 @@ const fakeCtx = {
                   roundsStarted: 2,
                   createdAt: now - 900,
                   updatedAt: now - 500,
+                },
+              },
+              {
+                type: 'job/registered',
+                time: now - 3000,
+                data: { jobId: 'bash-h1', owner: 'session-closed', kind: 'bash', label: 'pnpm build', startedAt: now - 3000 },
+              },
+              {
+                type: 'job/settled',
+                time: now - 1000,
+                data: {
+                  jobId: 'bash-h1',
+                  owner: 'session-closed',
+                  kind: 'bash',
+                  label: 'pnpm build',
+                  startedAt: now - 3000,
+                  finishedAt: now - 1000,
+                  status: 'failed',
+                  cause: 'producer',
+                  detail: 'exit code: 1',
                 },
               },
             ],
@@ -198,6 +218,13 @@ assert(closed.body.closed.length === 1, '只返回已关闭且有目标的会话
 assert(closed.body.closed[0].sessionId === 'session-closed', '命中已关闭会话')
 assert(closed.body.closed[0].goal.objective.indexOf('旧目标') >= 0, '复算出旧目标原文')
 assert(closed.body.closed[0].goal.roundsStarted === 2, '复算出轮次')
+
+const history = await call('GET', '/dsh-tower/api?history=1&limit=20', { host: '127.0.0.1:64700' })
+assert(history.status === 200 && history.body.ok === true, '作业历史扫描 200')
+assert(history.body.jobs.length === 1, '窗口内只有一条已收口作业')
+assert(history.body.jobs[0].jobId === 'bash-h1' && history.body.jobs[0].status === 'failed', '作业状态与 id 正确')
+assert(history.body.jobs[0].durationMs === 2000, '持续时间复算正确')
+assert(history.body.jobs[0].cwdName === 'closed-demo', '带会话目录名')
 
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')

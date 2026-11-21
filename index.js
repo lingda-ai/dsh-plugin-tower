@@ -37,6 +37,12 @@ const MAX_TAIL_BYTES = 8000
 const CLOSED_LIMIT = 8
 const closedCache = new Map()
 
+/** 作业历史：默认最近 24h、最多 20 条，扫描最多 12 个会话；按持久化 revision 缓存。 */
+const HISTORY_LIMIT = 20
+const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000
+const HISTORY_SCAN_SESSIONS = 12
+const historyCache = new Map()
+
 const ACTION_HISTORY_LIMIT = 30
 const actionHistory = []
 
@@ -183,6 +189,104 @@ async function collectClosedGoals(ctx, limit) {
     if (row && (row.goal || row.error)) rows.push(row)
   }
   return { ok: true, closed: rows, scanned: candidates.length }
+}
+
+/**
+ * 从会话事件流里重建作业记录：job/registered 建立，job/settled 收口，按 jobId 配对。
+ *
+ * 事件形状来自真实持久化日志的抽样（docs/verification.md §7.11）：
+ *   job/registered { jobId, owner, kind, label, startedAt, toolCall }
+ *   job/settled    { …同上…, finishedAt, status:'completed'|'killed'|'failed', cause, detail }
+ */
+function readJobsFromEvents(events) {
+  const byId = new Map()
+  for (const event of events) {
+    if (!event || (event.type !== 'job/registered' && event.type !== 'job/settled')) continue
+    const data = event.data || {}
+    const jobId = String(data.jobId || '')
+    if (jobId.length === 0) continue
+    const prev = byId.get(jobId) || {}
+    const settled = event.type === 'job/settled'
+    byId.set(
+      jobId,
+      Object.assign({}, prev, {
+        jobId,
+        label: text(data.label, 120) || prev.label || '',
+        kind: String(data.kind || prev.kind || ''),
+        owner: String(data.owner || prev.owner || ''),
+        startedAt: Number(data.startedAt) || prev.startedAt || 0,
+        finishedAt: settled ? Number(data.finishedAt) || Number(event.time) || 0 : prev.finishedAt || 0,
+        status: settled ? String(data.status || 'completed') : prev.status || 'running',
+        cause: settled ? String(data.cause || '') : prev.cause || '',
+        detail: settled ? text(data.detail, 160) : prev.detail || '',
+      }),
+    )
+  }
+  return Array.from(byId.values())
+}
+
+/** 读取并缓存一个存量会话里「已收口」的作业记录。 */
+async function scanSessionJobs(persistence, snap) {
+  const id = String(snap.header.id)
+  const revision = String(snap.revision)
+  const cached = historyCache.get(id)
+  if (cached && cached.revision === revision) return cached.jobs
+  const handle = await persistence.open(snap.header.id, 'read')
+  try {
+    const read = await handle.read()
+    const events = read && Array.isArray(read.events) ? read.events : []
+    const jobs = readJobsFromEvents(events)
+      .filter((job) => job.status !== 'running')
+      .map((job) =>
+        Object.assign({}, job, {
+          sessionId: id,
+          cwdName: baseName(snap.header.cwd) || '未命名工作区',
+          durationMs: job.finishedAt && job.startedAt ? Math.max(0, job.finishedAt - job.startedAt) : 0,
+        }),
+      )
+    if (historyCache.size > 200) historyCache.clear()
+    historyCache.set(id, { revision, jobs })
+    return jobs
+  } finally {
+    if (handle && typeof handle.close === 'function') await handle.close()
+  }
+}
+
+/** 跨会话的作业历史：最近 window 内已收口的作业，按结束时间倒序。 */
+async function collectJobHistory(ctx, limit, windowMs) {
+  const persistence = service(ctx, 'sessionPersistence')
+  if (!persistence || typeof persistence.list !== 'function' || typeof persistence.open !== 'function') {
+    return { ok: false, error: '会话持久化服务不可用' }
+  }
+  const snaps = await persistence.list()
+  if (!Array.isArray(snaps)) return { ok: false, error: '会话列表不可用' }
+  const want = Math.max(1, Math.min(HISTORY_LIMIT, Number(limit) || HISTORY_LIMIT))
+  const span = Number(windowMs) > 0 ? Number(windowMs) : HISTORY_WINDOW_MS
+  const since = Date.now() - span
+  const candidates = [...snaps]
+    .sort((a, b) => (Number(b.header.createdAt) || 0) - (Number(a.header.createdAt) || 0))
+    .slice(0, HISTORY_SCAN_SESSIONS)
+  const rows = []
+  const failed = []
+  for (const snap of candidates) {
+    try {
+      const jobs = await scanSessionJobs(persistence, snap)
+      for (const job of jobs) {
+        if (job.finishedAt >= since) rows.push(job)
+      }
+    } catch (error) {
+      failed.push(String(snap.header.id) + ': ' + String(error && error.message ? error.message : error))
+    }
+  }
+  rows.sort((a, b) => b.finishedAt - a.finishedAt)
+  return {
+    ok: true,
+    jobs: rows.slice(0, want),
+    total: rows.length,
+    scanned: candidates.length,
+    windowMs: span,
+    failed: failed.slice(0, 3),
+  }
 }
 
 /** 某个可选服务是否具备全部所需方法（用来区分「本来就没有」和「有了但变了」）。 */
@@ -652,6 +756,10 @@ async function handleRequest(ctx, req, res) {
         )
         return
       }
+      if (url.searchParams.has('history')) {
+        sendJson(res, 200, await collectJobHistory(ctx, url.searchParams.get('limit'), url.searchParams.get('window')))
+        return
+      }
       if (url.searchParams.has('closed')) {
         sendJson(res, 200, await collectClosedGoals(ctx, url.searchParams.get('limit')))
         return
@@ -700,4 +808,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory }

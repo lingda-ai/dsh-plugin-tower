@@ -303,6 +303,7 @@ assert(joined.indexOf('本机只读快照') >= 0, '渲染出页脚')
 assert(joined.indexOf('最近处置') >= 0, '渲染出「最近处置」分区')
 assert(joined.indexOf('v0.1.6') >= 0, '页脚渲染出版本号')
 assert(joined.indexOf('已收场') >= 0, '渲染出「已收场」分区')
+assert(joined.indexOf('作业历史') >= 0, '渲染出「作业历史」分区')
 
 // 空快照也要能渲染（新装用户第一眼）
 const emptyStore = {

@@ -56,6 +56,12 @@ window.__ModuleLoader__.load({
         'cap.log': '作业日志',
         'cap.schedule': '定时',
         'cap.sessions': '会话',
+        'section.history': '作业历史',
+        'history.loading': '读取已收口作业…',
+        'history.empty': '最近 24 小时没有已收口的作业',
+        'history.failed': '读取失败',
+        'history.note': '来自持久化日志 · 最近 24 小时 · 已扫描 {n} 个会话',
+        'history.total': '共 {n} 条',
         'section.closed': '已收场',
         'closed.empty': '没有带目标的已关闭会话',
         'closed.loading': '读取已关闭会话…',
@@ -167,6 +173,12 @@ window.__ModuleLoader__.load({
         'cap.log': 'Job log',
         'cap.schedule': 'Schedules',
         'cap.sessions': 'Sessions',
+        'section.history': 'Job history',
+        'history.loading': 'reading settled jobs…',
+        'history.empty': 'no settled job in the last 24h',
+        'history.failed': 'read failed',
+        'history.note': 'from the persisted log · last 24h · {n} sessions scanned',
+        'history.total': '{n} total',
         'section.closed': 'Closed',
         'closed.empty': 'no closed session had a goal',
         'closed.loading': 'reading closed sessions…',
@@ -1186,6 +1198,7 @@ window.__ModuleLoader__.load({
         const [cursor, setCursor] = React.useState(-1)
         const [capsOpen, setCapsOpen] = React.useState(false)
         const [closed, setClosed] = React.useState({ loading: false, rows: [], error: '', loaded: false })
+        const [history, setHistory] = React.useState({ loading: false, rows: [], error: '', loaded: false, total: 0, scanned: 0 })
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1314,7 +1327,41 @@ window.__ModuleLoader__.load({
         const jobsExpanded = sectionOpen('jobs', jobs.length > 0)
         const schedulesExpanded = sectionOpen('schedules', schedules.length > 0)
         const recent = snapshot.recent || []
+        const historyExpanded = sectionOpen('history', false)
         const closedExpanded = sectionOpen('closed', false)
+
+        const loadHistory = React.useCallback(async () => {
+          setHistory((prev) => Object.assign({}, prev, { loading: true, error: '' }))
+          try {
+            const response = await fetch(API + '?history=1&limit=20', {
+              cache: 'no-store',
+              headers: { accept: 'application/json' },
+            })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            setHistory({
+              loading: false,
+              rows: Array.isArray(data.jobs) ? data.jobs : [],
+              total: Number(data.total) || 0,
+              scanned: Number(data.scanned) || 0,
+              error: '',
+              loaded: true,
+            })
+          } catch (error) {
+            setHistory({
+              loading: false,
+              rows: [],
+              total: 0,
+              scanned: 0,
+              error: String(error && error.message ? error.message : error),
+              loaded: true,
+            })
+          }
+        }, [])
+
+        React.useEffect(() => {
+          if (historyExpanded && !history.loaded && !history.loading) loadHistory()
+        }, [historyExpanded, history.loaded, history.loading, loadHistory])
 
         const loadClosed = React.useCallback(async () => {
           setClosed((prev) => Object.assign({}, prev, { loading: true, error: '' }))
@@ -1785,6 +1832,89 @@ window.__ModuleLoader__.load({
                       )
                     : null,
               ),
+            ),
+
+            // ⑤ 作业历史（持久化日志复算，最近 24h）
+            h(
+              Section,
+              {
+                title: t('section.history'),
+                count: history.rows.length,
+                kind: 'jobs',
+                trailing: h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'twr-plus',
+                    title: historyExpanded ? t('act.collapse') : t('act.expand'),
+                    onClick: () => toggleSection('history', false),
+                  },
+                  historyExpanded ? '−' : '+',
+                ),
+              },
+              historyExpanded
+                ? history.loading
+                  ? h('div', { style: { padding: '2px 0' } }, h(Skeleton, null))
+                  : history.error
+                    ? h('div', { style: { fontSize: 10.5, color: T.bad, lineHeight: 1.5 } }, t('history.failed') + '：' + history.error)
+                    : history.rows.length === 0
+                      ? h(EmptyLine, null, t('history.empty'))
+                      : history.rows.map((row) =>
+                          h(
+                            'div',
+                            {
+                              key: row.jobId || row.sessionId + ':' + row.finishedAt,
+                              style: {
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 3,
+                                padding: '6px 9px',
+                                border: '1px solid ' + T.border,
+                                borderRadius: 8,
+                                background: T.surface,
+                                minWidth: 0,
+                              },
+                            },
+                            h(
+                              'div',
+                              { style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
+                              h(Chip, { color: jobColor(row.status) }, jobStatusLabel(t, row.status)),
+                              h(
+                                'span',
+                                { className: 'twr-ellipsis', style: { fontSize: 11, color: T.text, minWidth: 0 } },
+                                row.label || row.jobId || '—',
+                              ),
+                              h('span', { style: { flex: 1 } }),
+                              h(
+                                'span',
+                                { className: 'twr-num', style: { fontSize: 9.5, color: T.faint, whiteSpace: 'nowrap' } },
+                                row.finishedAt ? formatClock(row.finishedAt) : '',
+                              ),
+                            ),
+                            h(
+                              'div',
+                              { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9.5, color: T.faint, minWidth: 0 } },
+                              h('span', { style: { whiteSpace: 'nowrap' } }, row.cwdName),
+                              row.durationMs ? h('span', { className: 'twr-num' }, '· ' + formatElapsed(0, row.durationMs)) : null,
+                              row.detail
+                                ? h(
+                                    'span',
+                                    { className: 'twr-ellipsis', style: { color: row.status === 'failed' ? T.bad : T.faint, minWidth: 0 } },
+                                    '· ' + row.detail,
+                                  )
+                                : null,
+                            ),
+                          ),
+                        )
+                : null,
+              historyExpanded
+                ? h(
+                    'div',
+                    { style: { fontSize: 9.5, color: T.faint, paddingTop: 2 } },
+                    t('history.note', { n: history.scanned }) +
+                      (history.total > history.rows.length ? ' · ' + t('history.total', { n: history.total }) : ''),
+                  )
+                : null,
             ),
 
             // ⑤ 最近处置（本次运行内的动作账）
