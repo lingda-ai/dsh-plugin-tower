@@ -88,6 +88,7 @@ assert(history.jobs[0].cwdName === 'other', '带上会话目录名')
 assert(history.jobs[1].jobId === 'bash-new', '另一条来自另一个会话')
 assert(history.jobs[0].durationMs === 1000, '持续时间由 startedAt/finishedAt 复算')
 assert(history.total === 2, 'total 为窗口内总数')
+assert(history.byStatus && history.byStatus.failed === 1 && history.byStatus.completed === 1, '按状态汇总计数（切片前统计全窗口）')
 
 const narrow = await __internal.collectJobHistory(fakeCtx, 20, 500)
 assert(narrow.jobs.length === 0, '缩小窗口后过滤掉较早的作业')

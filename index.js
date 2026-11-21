@@ -288,10 +288,18 @@ async function collectJobHistory(ctx, limit, windowMs) {
     }
   }
   rows.sort((a, b) => b.finishedAt - a.finishedAt)
+  const byStatus = { completed: 0, failed: 0, killed: 0, other: 0 }
+  for (const row of rows) {
+    if (row.status === 'completed') byStatus.completed += 1
+    else if (row.status === 'failed') byStatus.failed += 1
+    else if (row.status === 'killed') byStatus.killed += 1
+    else byStatus.other += 1
+  }
   return {
     ok: true,
     jobs: rows.slice(0, want),
     total: rows.length,
+    byStatus,
     scanned: candidates.length,
     windowMs: span,
     failed: failed.slice(0, 3),
@@ -711,15 +719,40 @@ async function buildShiftReport(ctx, hours) {
     lines.push('')
     lines.push('- 无' + (history.ok ? '' : '（' + oneLine(history.error, 80) + '）'))
   } else {
+    const by = history.byStatus || { completed: 0, failed: 0, killed: 0, other: 0 }
     lines.push('')
-    for (const job of history.jobs.slice(0, 15)) {
+    // 一页交接要的是结论，不是日志墙：先汇总，再只把失败摊开，最后附少量最近项。
+    lines.push(
+      '- 共 ' +
+        history.total +
+        ' 条：已完成 ' +
+        by.completed +
+        ' · 失败 ' +
+        by.failed +
+        ' · 终止 ' +
+        by.killed +
+        (by.other > 0 ? ' · 其它 ' + by.other : ''),
+    )
+    const failures = history.jobs.filter((job) => job.status === 'failed').slice(0, 5)
+    const pick = failures.length > 0 ? failures : history.jobs.slice(0, 5)
+    lines.push('')
+    lines.push(failures.length > 0 ? '失败明细（最多 5 条）：' : '最近 5 条：')
+    for (const job of pick) {
       const seconds = Math.round((job.durationMs || 0) / 1000)
       lines.push(
-        '- ' + clockOf(job.finishedAt) + ' ' + labelOf(JOB_LABELS, job.status) + ' · ' + oneLine(job.label, 80) + ' · ' + seconds + 's' + (job.detail ? ' · ' + oneLine(job.detail, 60) : '') + '（' + oneLine(job.cwdName, 40) + '）',
+        '- ' +
+          clockOf(job.finishedAt) +
+          ' ' +
+          oneLine(job.label, 56) +
+          ' · ' +
+          seconds +
+          's' +
+          (job.detail ? ' · ' + oneLine(job.detail, 40) : '') +
+          '（' + oneLine(job.cwdName, 24) + '）',
       )
     }
-    if (history.total > history.jobs.length) {
-      lines.push('- ……窗口内共 ' + history.total + ' 条，仅列最近 ' + history.jobs.length + ' 条')
+    if (history.total > pick.length) {
+      lines.push('- ……其余 ' + (history.total - pick.length) + ' 条已省略（面板可查完整历史）')
     }
   }
   lines.push('')
