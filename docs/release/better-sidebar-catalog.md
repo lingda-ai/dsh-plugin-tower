@@ -1,8 +1,8 @@
 # better-sidebar 生态目录 PR（可直接粘贴）
 
 > 目标仓库：`omdsh-dev/DSH-better-sidebar`
-> **唯一前置**：本插件需要一个 **GitHub 仓库 URL**（目录条目的 `url` 字段）。
-> 当前 Gitee 仓库已公开，GitHub 镜像尚未创建（`api.github.com/repos/linzhengtong/dsh-plugin-tower` → 404）。
+> **前置已满足**：GitHub 镜像 **https://github.com/lingda-ai/dsh-plugin-tower** 已公开，
+> `main` 与 tag `v0.7.2` 已同步，CI（`.github/workflows/verify.yml`）会展示产物闸门结果。
 
 ---
 
@@ -44,7 +44,7 @@
   {
     id: 'dsh-plugin-tower',
     name: () => t('pluginTowerName'),
-    url: 'https://github.com/<你的账号>/dsh-plugin-tower',
+    url: 'https://github.com/lingda-ai/dsh-plugin-tower',
     description: () => t('pluginTowerDesc'),
     // 只用宿主原生右栏 seat，不依赖 better-sidebar 的私有 API；
     // 注册的是跨会话的运行值守 tab（目标/作业/定时 + 就地干预），无网络请求。
@@ -97,7 +97,8 @@ SHA-256-chained local audit log, and a one-page Markdown shift report.
 
 ## 5. 提交前检查
 
-- [ ] GitHub 仓库公开可访问，README 有安装段与截图
+- [x] GitHub 仓库公开可访问（`lingda-ai/dsh-plugin-tower`，README 有安装段）
+- [ ] 附一张截图（PR 描述里）
 - [ ] `package.json` 的 `dsh.client.inject` 只列 `@deepseek-ai/dsh-client-ui-sidebar-right`
 - [ ] 在干净 profile 装一次：tab 出现、面板有数据、动作可用
 - [ ] 目录测试通过（`pnpm test tests/plugin-list.spec.ts`）

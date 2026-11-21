@@ -1,0 +1,21 @@
+# 产物闸门：每次 push / PR 都验「打包出来的那一份」，而不是仓库里的文件。
+# 与本地 `npm run verify:artifact` 同一条命令，避免两边规则漂移。
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 产物验收（33 项 + 产物内跑全部测试）
+        run: node scripts/verify-artifact.mjs --pack --tests ./test
