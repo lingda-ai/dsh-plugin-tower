@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
         'head.refresh': '刷新',
         'strip.live': '在飞',
         'strip.running': '执行中',
-        'strip.attention': '待处置',
+        'strip.urgent': '待处置',
         'strip.jobs': '后台',
         'strip.schedules': '定时',
         'section.attention': '需要你',
@@ -47,18 +47,33 @@ window.__ModuleLoader__.load({
         'section.jobs': '后台作业',
         'section.schedules': '定时航班',
         'empty.flights.title': '塔台安静',
-        'empty.flights.body': '当前没有在运行的 agent。给会话建一个目标，或直接开始对话。',
         'empty.attention': '没有需要你判断的事。',
         'empty.jobs': '没有正在跑的后台作业。',
         'empty.schedules': '没有定时任务。',
-        'empty.flights.hint': '让它跑起来，这里才有得值守。三种方式立刻见效：',
-        'empty.flights.t1': '① 说「给这件事建一个目标」→ 出现目标卡、轮次与暂停/完成',
-        'empty.flights.t2': '② 让它跑一个耗时命令 → 出现后台作业与「终止」',
-        'empty.flights.t3': '③ 说「每天 9 点提醒我」→ 出现定时航班与「立即执行」',
+        'empty.flights.copyHint': '复制这句话发给 agent',
+        'empty.flights.foot': '复制后粘到输入框发送即可',
+        'empty.flights.p1': '给这件事建一个目标，然后按目标继续推进；卡住时告诉我为什么',
+        'empty.flights.p2': '用后台作业跑一个耗时命令（比如全量构建或测试），跑起来我要能在这里看到它',
+        'empty.flights.p3': '每天上午 9 点提醒我一次这件事的进度',
+        'scope.all': '全机',
+        'scope.mine': '本会话',
+        'chip.current': '当前',
+        'act.snooze': '稍后',
+        'act.snoozeHint': '30 分钟内不再提示（只存在本机）',
+        'snooze.note': '已稍后 {n}',
+        'act.collapse': '收起',
+        'act.expand': '展开',
+        'empty.flights.hint': '点一下复制',
+        'empty.flights.t1': '给这件事建一个目标',
+        'empty.flights.t2': '跑一个耗时命令',
+        'empty.flights.t3': '每天 9 点提醒我',
         'flights.hint.goal': '还没有目标：对 agent 说「给这件事建一个目标」，就能在这里看到轮次并随时暂停。',
         'flight.turns': '第 {n} 轮',
         'flight.age': '已运行 {when}',
         'flight.failedJobs': '{n} 个失败',
+        'crash.title': '面板渲染失败',
+        'crash.body': '塔台自己出错了，宿主其它功能不受影响。请把下面这行发给开发者，或先重启一次。',
+        'crash.retry': '重试',
         'phase.active': '执行中',
         'phase.paused': '已暂停',
         'phase.blocked': '受阻',
@@ -100,7 +115,7 @@ window.__ModuleLoader__.load({
         'head.refresh': 'Refresh',
         'strip.live': 'Live',
         'strip.running': 'Running',
-        'strip.attention': 'For you',
+        'strip.urgent': 'For you',
         'strip.jobs': 'Jobs',
         'strip.schedules': 'Scheduled',
         'section.attention': 'Needs you',
@@ -108,18 +123,33 @@ window.__ModuleLoader__.load({
         'section.jobs': 'Background jobs',
         'section.schedules': 'Schedules',
         'empty.flights.title': 'Tower is quiet',
-        'empty.flights.body': 'No agent is live right now. Create a goal in a session, or start a conversation.',
         'empty.attention': 'Nothing needs your judgement.',
         'empty.jobs': 'No background job is running.',
         'empty.schedules': 'No scheduled task.',
-        'empty.flights.hint': 'Start something and there is work to watch. Three ways to see it immediately:',
-        'empty.flights.t1': '① Say “create a goal for this” → a goal card with rounds, pause and complete',
-        'empty.flights.t2': '② Ask for a long command → a background job with “Kill”',
-        'empty.flights.t3': '③ Say “remind me at 9am daily” → a schedule with “Run now”',
+        'empty.flights.copyHint': 'Copy this line and send it to the agent',
+        'empty.flights.foot': 'Paste it into the composer and send',
+        'empty.flights.p1': 'Create a goal for this task, then keep working toward it; when you are stuck, tell me why',
+        'empty.flights.p2': 'Run a long command as a background job (a full build or the test suite); I want to watch it here',
+        'empty.flights.p3': 'Remind me of the progress of this task every day at 9am',
+        'scope.all': 'Fleet',
+        'scope.mine': 'This session',
+        'chip.current': 'current',
+        'act.snooze': 'Later',
+        'act.snoozeHint': 'Hide for 30 minutes (stored on this machine only)',
+        'snooze.note': '{n} snoozed',
+        'act.collapse': 'Collapse',
+        'act.expand': 'Expand',
+        'empty.flights.hint': 'tap to copy',
+        'empty.flights.t1': 'create a goal',
+        'empty.flights.t2': 'run a long command',
+        'empty.flights.t3': 'remind me at 9am',
         'flights.hint.goal': 'No goal yet: tell the agent “create a goal for this” to see rounds here and pause anytime.',
         'flight.turns': 'turn {n}',
         'flight.age': 'up {when}',
         'flight.failedJobs': '{n} failed',
+        'crash.title': 'Panel failed to render',
+        'crash.body': 'Tower crashed on its own; the rest of the host is unaffected. Send the line below to the author, or restart once.',
+        'crash.retry': 'Retry',
         'phase.active': 'Active',
         'phase.paused': 'Paused',
         'phase.blocked': 'Blocked',
@@ -243,23 +273,43 @@ window.__ModuleLoader__.load({
     }
     // #endregion
 
-    // #region palette
-    const HAIRLINE = 'color-mix(in srgb, currentColor 14%, transparent)'
-    const HAIRLINE_SOFT = 'color-mix(in srgb, currentColor 9%, transparent)'
-    const WASH = 'color-mix(in srgb, currentColor 5%, transparent)'
-    const WASH_STRONG = 'color-mix(in srgb, currentColor 9%, transparent)'
-    const MUTED = 'color-mix(in srgb, currentColor 62%, transparent)'
-    const FAINT = 'color-mix(in srgb, currentColor 45%, transparent)'
-    const GREEN = '#22a06b'
-    const AMBER = '#d98a17'
-    const RED = '#dc4a3d'
-    const GREY = '#8a8f98'
+    // #region design tokens
+    /**
+     * 宿主主题令牌（已通过 Theme.listTokens 核实存在）。
+     * 全部带兜底：令牌缺失时退回 currentColor 混色，面板不会变成无边框白块。
+     */
+    const T = {
+      surface: 'var(--dsw-alias-bg-layer-1, color-mix(in srgb, currentColor 4%, transparent))',
+      surface2: 'var(--dsw-alias-bg-layer-2, color-mix(in srgb, currentColor 7%, transparent))',
+      border: 'var(--dsw-alias-border-l1, color-mix(in srgb, currentColor 12%, transparent))',
+      borderStrong: 'var(--dsw-alias-border-l2, color-mix(in srgb, currentColor 20%, transparent))',
+      text: 'var(--dsw-alias-label-primary, currentColor)',
+      text2: 'var(--dsw-alias-label-secondary, color-mix(in srgb, currentColor 66%, transparent))',
+      muted: 'color-mix(in srgb, currentColor 50%, transparent)',
+      faint: 'color-mix(in srgb, currentColor 38%, transparent)',
+      brand: 'var(--dsw-alias-brand-primary, #4d6bfe)',
+      ok: 'var(--dsw-alias-state-success-primary, #22a06b)',
+      warn: 'var(--dsw-alias-state-warn-primary, #d98a17)',
+      bad: 'var(--dsw-alias-state-error-primary, #dc4a3d)',
+      idle: 'var(--dsw-alias-state-idle-primary, #8a8f98)',
+      sidebar: 'var(--dsw-specific-sidebar-fill, transparent)',
+      mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    }
 
+    /** 语义色：目标阶段 / 作业状态 / 待处置级别，全部走同一套。 */
     function phaseColor(phase) {
-      if (phase === 'active') return GREEN
-      if (phase === 'paused') return AMBER
-      if (phase === 'blocked') return RED
-      return GREY
+      if (phase === 'active') return T.ok
+      if (phase === 'paused') return T.warn
+      if (phase === 'blocked') return T.bad
+      return T.idle
+    }
+
+    function jobColor(status) {
+      if (status === 'running') return T.ok
+      if (status === 'stopping') return T.warn
+      if (status === 'failed') return T.bad
+      if (status === 'killed') return T.idle
+      return T.text2
     }
 
     function jobStatusLabel(t, status) {
@@ -267,15 +317,104 @@ window.__ModuleLoader__.load({
       return known[status] ? t('job.' + status) : status || '—'
     }
 
-    function jobColor(status) {
-      if (status === 'running') return GREEN
-      if (status === 'stopping') return AMBER
-      if (status === 'failed') return RED
-      if (status === 'killed') return GREY
-      return MUTED
-    }
-    // #endregion
+    /**
+     * 组件内样式。全部带 .twr- 前缀，避免污染宿主；
+     * 悬停/焦点/动效只能用伪类实现，因此必须走真实的 style 标签而不是 inline style。
+     */
+    const CSS = `
+.twr-root, .twr-root * { box-sizing: border-box; }
+.twr-root { container-type: inline-size; container-name: twr; }
+.twr-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+.twr-root ::-webkit-scrollbar-thumb { background: color-mix(in srgb, currentColor 18%, transparent); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.twr-root ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, currentColor 28%, transparent); background-clip: padding-box; }
+.twr-root ::-webkit-scrollbar-track { background: transparent; }
 
+.twr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 22px; padding: 0 8px;
+  border: 1px solid ${T.border}; border-radius: 6px; background: transparent; color: ${T.text2}; font: inherit; font-size: 11px;
+  line-height: 1; cursor: pointer; white-space: nowrap; transition: background .12s ease, border-color .12s ease, color .12s ease, transform .06s ease; }
+.twr-btn:hover { background: ${T.surface2}; border-color: ${T.borderStrong}; color: ${T.text}; }
+.twr-btn:active { transform: scale(.97); }
+.twr-btn:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 1px; }
+.twr-btn[disabled] { opacity: .45; cursor: default; transform: none; }
+.twr-btn--ghost { border-color: transparent; color: ${T.text2}; }
+.twr-btn--ghost:hover { border-color: transparent; background: ${T.surface2}; }
+.twr-btn--accent { color: ${T.ok}; border-color: color-mix(in srgb, ${T.ok} 45%, transparent); background: color-mix(in srgb, ${T.ok} 9%, transparent); }
+.twr-btn--accent:hover { background: color-mix(in srgb, ${T.ok} 16%, transparent); color: ${T.ok}; border-color: color-mix(in srgb, ${T.ok} 65%, transparent); }
+.twr-btn--danger { color: ${T.bad}; border-color: color-mix(in srgb, ${T.bad} 40%, transparent); }
+.twr-btn--danger:hover { background: color-mix(in srgb, ${T.bad} 12%, transparent); color: ${T.bad}; border-color: color-mix(in srgb, ${T.bad} 60%, transparent); }
+
+.twr-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent; color: ${T.muted}; cursor: pointer;
+  transition: background .12s ease, color .12s ease, transform .3s ease; }
+.twr-icon-btn:hover { background: ${T.surface2}; color: ${T.text}; }
+.twr-icon-btn:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 1px; }
+.twr-icon-btn[data-spin="1"] { transform: rotate(360deg); }
+
+.twr-card { border: 1px solid ${T.border}; border-radius: 10px; background: ${T.surface}; padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  transition: border-color .12s ease, background .12s ease, box-shadow .16s ease; }
+.twr-card:hover { border-color: ${T.borderStrong}; box-shadow: 0 1px 2px color-mix(in srgb, currentColor 6%, transparent); }
+
+.twr-dot { position: relative; display: inline-block; width: 7px; height: 7px; border-radius: 999px; flex: 0 0 auto; }
+.twr-dot--live { box-shadow: 0 0 0 3px color-mix(in srgb, ${T.ok} 16%, transparent); }
+.twr-dot--live::after { content: ""; position: absolute; inset: -1px; border-radius: 999px; border: 1px solid currentColor;
+  opacity: .6; animation: twr-pulse 2s cubic-bezier(.2,.6,.4,1) infinite; }
+@keyframes twr-pulse { 0% { transform: scale(.9); opacity: .55; } 70% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(2.2); opacity: 0; } }
+
+.twr-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid; font-size: 10px; line-height: 15px; white-space: nowrap; flex: 0 0 auto; }
+
+.twr-scope { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: ${T.surface2};
+  border: 1px solid ${T.border}; }
+.twr-scope > button { border: 0; background: transparent; color: ${T.text2}; font: inherit; font-size: 10.5px;
+  padding: 2px 8px; border-radius: 5px; cursor: pointer; transition: background .12s ease, color .12s ease; }
+.twr-scope > button:hover { color: ${T.text}; }
+.twr-scope > button[data-on="1"] { background: ${T.surface}; color: ${T.text}; box-shadow: 0 1px 2px color-mix(in srgb, currentColor 14%, transparent); }
+.twr-scope > button:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 0; }
+
+.twr-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@container twr (min-width: 680px) { .twr-grid { grid-template-columns: 1fr 1fr; } }
+
+.twr-hint { display: flex; align-items: flex-start; gap: 7px; width: 100%; text-align: left;
+  border: 1px dashed ${T.border}; border-radius: 8px; background: transparent; padding: 7px 9px;
+  color: ${T.text2}; font: inherit; font-size: 11px; line-height: 1.55; cursor: pointer;
+  transition: border-color .12s ease, background .12s ease, color .12s ease; }
+.twr-hint:hover { border-color: color-mix(in srgb, ${T.brand} 60%, transparent); background: color-mix(in srgb, ${T.brand} 6%, transparent); color: ${T.text}; }
+.twr-hint:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 1px; }
+.twr-hint__idx { flex: 0 0 auto; width: 14px; height: 14px; border-radius: 4px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 9px; background: ${T.surface2}; color: ${T.text2}; margin-top: 1px; }
+
+.twr-skel { height: 10px; border-radius: 4px;
+  background: linear-gradient(90deg, ${T.surface} 25%, ${T.surface2} 37%, ${T.surface} 63%);
+  background-size: 400% 100%; animation: twr-shimmer 1.5s ease infinite; }
+@keyframes twr-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+.twr-banner { display: flex; gap: 8px; align-items: flex-start; padding: 7px 9px; border-radius: 8px; font-size: 11px; line-height: 1.55; }
+
+.twr-divider { height: 1px; background: ${T.border}; flex: 1; min-width: 8px; }
+.twr-plus { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; border: 1px solid ${T.border}; color: ${T.text2};
+  background: transparent; cursor: pointer; font-size: 11px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.twr-plus:hover { background: ${T.surface2}; color: ${T.text}; }
+
+.twr-entry { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px; border-radius: 7px;
+  border: 1px solid transparent; background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 1;
+  cursor: pointer; white-space: nowrap; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.twr-entry:hover { background: ${T.surface2}; border-color: ${T.border}; }
+.twr-entry:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 1px; }
+.twr-entry[data-urgent="1"] { color: ${T.bad}; border-color: color-mix(in srgb, ${T.bad} 45%, transparent); background: color-mix(in srgb, ${T.bad} 9%, transparent); }
+.twr-entry__badge { min-width: 14px; height: 14px; padding: 0 4px; border-radius: 999px; background: ${T.bad}; color: #fff;
+  font-size: 9px; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.twr-clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.twr-clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.twr-num { font-variant-numeric: tabular-nums; }
+.twr-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .twr-root *, .twr-entry { animation: none !important; transition: none !important; }
+}
+`
+    // #endregion
     // #region store
     function createStore() {
       let state = {
@@ -407,37 +546,50 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function Dot(props) {
+    /** 区块小图标：航班 / 需要你 / 后台 / 定时，统一 1.6 描边。 */
+    function SectionIcon(props) {
+      const kind = props.kind
+      const common = {
+        width: 12,
+        height: 12,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.7,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        'aria-hidden': true,
+        style: { display: 'block', flex: '0 0 auto' },
+      }
+      if (kind === 'attention') {
+        return h('svg', common, h('path', { d: 'M12 9v4' }), h('path', { d: 'M12 17h.01' }), h('path', { d: 'M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z' }))
+      }
+      if (kind === 'jobs') {
+        return h('svg', common, h('path', { d: 'm4 17 6-6-6-6' }), h('path', { d: 'M12 19h8' }))
+      }
+      if (kind === 'schedules') {
+        return h('svg', common, h('circle', { cx: 12, cy: 12, r: 8.5 }), h('path', { d: 'M12 7.5V12l3 2' }))
+      }
+      return h('svg', common, h('path', { d: 'M3 12h4l2-6 3 12 2-6h5' }))
+    }
+
+    function StatusDot(props) {
       return h('span', {
-        style: {
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: props.color,
-          boxShadow: '0 0 0 2px color-mix(in srgb, ' + props.color + ' 22%, transparent)',
-          flex: '0 0 auto',
-        },
+        className: 'twr-dot' + (props.live ? ' twr-dot--live' : ''),
+        style: { background: props.color, color: props.color },
       })
     }
 
     function Chip(props) {
-      const color = props.color || MUTED
+      const color = props.color || T.text2
       return h(
         'span',
         {
+          className: 'twr-chip',
           style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 3,
-            padding: '1px 6px',
-            borderRadius: 999,
-            border: '1px solid color-mix(in srgb, ' + color + ' 40%, transparent)',
-            background: 'color-mix(in srgb, ' + color + ' 12%, transparent)',
-            color: color,
-            fontSize: 10,
-            lineHeight: '15px',
-            whiteSpace: 'nowrap',
-            flex: '0 0 auto',
+            color,
+            borderColor: 'color-mix(in srgb, ' + color + ' 42%, transparent)',
+            background: 'color-mix(in srgb, ' + color + ' 10%, transparent)',
           },
         },
         props.children,
@@ -445,119 +597,159 @@ window.__ModuleLoader__.load({
     }
 
     function Button(props) {
-      const [hover, setHover] = React.useState(false)
-      const disabled = Boolean(props.disabled)
-      const danger = props.tone === 'danger'
-      const primary = props.tone === 'primary'
-      const color = danger ? RED : primary ? GREEN : 'currentColor'
+      const tone = props.tone ? ' twr-btn--' + props.tone : ''
       return h(
         'button',
         {
           type: 'button',
-          disabled: disabled,
+          disabled: Boolean(props.disabled),
           title: props.title || undefined,
-          onClick: disabled ? undefined : props.onClick,
-          onMouseEnter: () => setHover(true),
-          onMouseLeave: () => setHover(false),
-          style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            height: 22,
-            padding: '0 8px',
-            borderRadius: 6,
-            border: '1px solid ' + (danger ? 'color-mix(in srgb, ' + RED + ' 45%, transparent)' : HAIRLINE),
-            background: hover && !disabled ? WASH_STRONG : danger ? 'color-mix(in srgb, ' + RED + ' 10%, transparent)' : WASH,
-            color: disabled ? FAINT : color,
-            font: 'inherit',
-            fontSize: 11,
-            lineHeight: 1,
-            cursor: disabled ? 'default' : 'pointer',
-            opacity: disabled ? 0.55 : 1,
-            whiteSpace: 'nowrap',
-          },
+          onClick: props.disabled ? undefined : props.onClick,
+          className: 'twr-btn' + tone,
+          'aria-label': props.ariaLabel || props.title || undefined,
         },
         props.children,
+      )
+    }
+
+    function IconButton(props) {
+      return h(
+        'button',
+        {
+          type: 'button',
+          title: props.title || undefined,
+          'aria-label': props.title || undefined,
+          onClick: props.onClick,
+          className: 'twr-icon-btn',
+          'data-spin': props.spin ? '1' : '0',
+        },
+        props.children,
+      )
+    }
+
+    function SectionTitle(props) {
+      return h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, letterSpacing: '0.02em', color: T.faint } },
+        props.kind ? h(SectionIcon, { kind: props.kind }) : null,
+        h('span', { style: { color: T.text2, fontWeight: 600 } }, props.title),
+        props.count ? h('span', { className: 'twr-num', style: { color: T.faint } }, String(props.count)) : null,
+        h('span', { className: 'twr-divider' }),
+        props.trailing || null,
       )
     }
 
     function Section(props) {
       return h(
         'section',
-        { style: { display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px 2px' } },
-        h(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 10,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: FAINT,
-            },
-          },
-          h('span', null, props.title),
-          props.count ? h('span', { style: { color: MUTED } }, '· ' + props.count) : null,
-          h('span', { style: { flex: 1, height: 1, background: HAIRLINE_SOFT } }),
-        ),
+        { style: { display: 'flex', flexDirection: 'column', gap: 7, padding: '11px 12px 0' } },
+        h(SectionTitle, { title: props.title, count: props.count, kind: props.kind, trailing: props.trailing }),
         props.children,
       )
     }
 
+    function Skeleton() {
+      return h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 7, padding: '4px 0' } },
+        ['62%', '84%', '48%'].map((width, index) =>
+          h('div', { key: index, className: 'twr-skel', style: { width } }),
+        ),
+      )
+    }
+
+    function EmptyLine(props) {
+      return h('div', { style: { fontSize: 11, color: T.faint, lineHeight: 1.6, padding: '1px 0 3px' } }, props.children)
+    }
+
+    /** 空态不是「没东西」，而是三条可直接复制发给 agent 的起手式。 */
     function EmptyGuide(props) {
       const t = props.t
-      const steps = [t('empty.flights.t1'), t('empty.flights.t2'), t('empty.flights.t3')]
+      const onCopy = props.onCopy
+      const copied = props.copied
+      const steps = [
+        { key: 'goal', label: t('empty.flights.t1'), prompt: t('empty.flights.p1') },
+        { key: 'job', label: t('empty.flights.t2'), prompt: t('empty.flights.p2') },
+        { key: 'schedule', label: t('empty.flights.t3'), prompt: t('empty.flights.p3') },
+      ]
       return h(
         'div',
         {
           style: {
             display: 'flex',
             flexDirection: 'column',
-            gap: 4,
-            padding: '18px 12px 20px',
-            border: '1px dashed ' + HAIRLINE,
-            borderRadius: 8,
-            background: WASH,
+            gap: 7,
+            padding: '12px 11px 13px',
+            border: '1px solid ' + T.border,
+            borderRadius: 10,
+            background: T.surface,
           },
         },
         h(
           'div',
-          { style: { display: 'flex', alignItems: 'center', gap: 6, color: MUTED, fontSize: 12 } },
+          { style: { display: 'flex', alignItems: 'center', gap: 6, color: T.text2, fontSize: 12 } },
           h(Glyph, { size: 15 }),
           h('span', { style: { fontWeight: 600 } }, t('empty.flights.title')),
+          h('span', { style: { flex: 1 } }),
+          h('span', { style: { fontSize: 10, color: T.faint } }, t('empty.flights.hint')),
         ),
-        h('div', { style: { fontSize: 11, color: FAINT, lineHeight: 1.6, marginTop: 2 } }, t('empty.flights.hint')),
-        ...steps.map((line, index) =>
-          h('div', { key: index, style: { fontSize: 11, color: MUTED, lineHeight: 1.6 } }, line),
+        steps.map((step) =>
+          h(
+            'button',
+            {
+              key: step.key,
+              type: 'button',
+              className: 'twr-hint',
+              title: t('empty.flights.copyHint'),
+              onClick: () => onCopy(step.key, step.prompt),
+            },
+            h('span', { className: 'twr-hint__idx' }, copied === step.key ? '✓' : '＋'),
+            h('span', { style: { flex: 1, minWidth: 0 } }, step.label),
+          ),
         ),
-      )
-    }
-
-    function Empty(props) {
-      return h(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
-            padding: '26px 18px',
-            color: FAINT,
-            textAlign: 'center',
-          },
-        },
-        h('div', { style: { color: MUTED, opacity: 0.75 } }, h(Glyph, { size: 26 })),
-        h('div', { style: { fontSize: 12, color: MUTED } }, props.title),
-        props.body ? h('div', { style: { fontSize: 11, lineHeight: 1.55, maxWidth: 240 } }, props.body) : null,
+        h('div', { style: { fontSize: 10, color: T.faint } }, t('empty.flights.foot')),
       )
     }
     // #endregion
-
     // #region panel
     function makePanel(ctx, t, store) {
+      const SNOOZE_KEY = 'dsh-tower.snooze.v1'
+      const SNOOZE_MS = 30 * 60 * 1000
+
+      function readSnooze() {
+        try {
+          const raw = window.localStorage.getItem(SNOOZE_KEY)
+          const parsed = raw ? JSON.parse(raw) : null
+          return parsed && typeof parsed === 'object' ? parsed : {}
+        } catch {
+          return {}
+        }
+      }
+
+      function writeSnooze(map) {
+        try {
+          window.localStorage.setItem(SNOOZE_KEY, JSON.stringify(map))
+        } catch {
+          /* 隐私模式下写不进去：本轮仍然生效，只是不持久 */
+        }
+      }
+
+      function attentionKey(item) {
+        return [item.code, item.sessionId, item.jobId || ''].join(':')
+      }
+
+      function copyText(value) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value)
+            return true
+          }
+        } catch {
+          /* 落到下面的兜底 */
+        }
+        return false
+      }
+
       function useSnapshot() {
         const [snapshot, setSnapshot] = React.useState(store.get())
         React.useEffect(() => {
@@ -574,34 +766,30 @@ window.__ModuleLoader__.load({
       function useAction() {
         const [pending, setPending] = React.useState('')
         const [error, setError] = React.useState('')
-        const run = React.useCallback(
-          async (key, payload) => {
-            setPending(key)
-            setError('')
-            try {
-              const response = await fetch(API, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(payload),
-              })
-              const data = await response.json().catch(() => null)
-              if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
-              await store.refresh()
-            } catch (actionError) {
-              setError(String(actionError && actionError.message ? actionError.message : actionError))
-            } finally {
-              setPending('')
-            }
-          },
-          [],
-        )
+        const run = React.useCallback(async (key, payload) => {
+          setPending(key)
+          setError('')
+          try {
+            const response = await fetch(API, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            await store.refresh()
+          } catch (actionError) {
+            setError(String(actionError && actionError.message ? actionError.message : actionError))
+          } finally {
+            setPending('')
+          }
+        }, [])
         return { pending, error, run, clear: () => setError('') }
       }
 
       function openSession(sessionId) {
         const uiWorkspace = getService(ctx, 'uiWorkspace')
         if (typeof uiWorkspace?.openSession !== 'function') return
-        // 已核实形态：openSession(target: string | SubagentAddress)，见 dsh-better-sidebar 调用点
         try {
           uiWorkspace.openSession(sessionId)
           return
@@ -615,7 +803,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      function GoalBody(props) {
+      function GoalLine(props) {
         const goal = props.goal
         const now = props.now
         const color = phaseColor(goal.phase)
@@ -624,33 +812,13 @@ window.__ModuleLoader__.load({
         const ratio = max > 0 ? Math.min(1, rounds / max) : 0
         return h(
           'div',
-          { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 } },
-          h(
-            'div',
-            {
-              style: {
-                fontSize: 12,
-                lineHeight: 1.5,
-                color: 'inherit',
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              },
-            },
-            goal.objective,
-          ),
-          h(
-            'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: MUTED } },
-            h('span', null, t('flight.rounds', { n: rounds, max: max > 0 ? max : '∞' })),
-            goal.updatedAt ? h('span', { style: { color: FAINT } }, '· ' + formatElapsed(goal.updatedAt, now) + '前') : null,
-          ),
+          { style: { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 } },
+          h('div', { className: 'twr-clamp3', style: { fontSize: 12, lineHeight: 1.55, color: T.text } }, goal.objective),
           max > 0
             ? h(
                 'div',
-                { style: { height: 3, borderRadius: 999, background: WASH_STRONG, overflow: 'hidden' } },
-                h('div', { style: { width: Math.max(3, ratio * 100) + '%', height: '100%', background: color } }),
+                { style: { height: 2, borderRadius: 999, background: T.surface2, overflow: 'hidden' } },
+                h('div', { style: { width: Math.max(4, ratio * 100) + '%', height: '100%', background: color } }),
               )
             : null,
           goal.phase === 'blocked' && goal.blockedMessage
@@ -659,12 +827,12 @@ window.__ModuleLoader__.load({
                 {
                   style: {
                     fontSize: 11,
-                    lineHeight: 1.5,
-                    padding: '5px 7px',
+                    lineHeight: 1.55,
+                    padding: '4px 7px',
                     borderRadius: 6,
-                    color: RED,
-                    background: 'color-mix(in srgb, ' + RED + ' 10%, transparent)',
-                    border: '1px solid color-mix(in srgb, ' + RED + ' 26%, transparent)',
+                    color: T.bad,
+                    background: 'color-mix(in srgb, ' + T.bad + ' 9%, transparent)',
+                    border: '1px solid color-mix(in srgb, ' + T.bad + ' 24%, transparent)',
                   },
                 },
                 goal.blockedMessage,
@@ -677,80 +845,57 @@ window.__ModuleLoader__.load({
         const flight = props.flight
         const action = props.action
         const now = props.now
+        const current = props.current
         const goal = flight.goal
         const liveJobs = flight.jobs.filter((job) => job.status === 'running' || job.status === 'stopping')
         const failedJobs = flight.jobs.filter((job) => job.status === 'failed')
-        const goalKey = 'goal:' + flight.sessionId
+        const goalKey = 'goal:' + flight.sessionId + ':'
         const busy = action.pending.indexOf(goalKey) === 0
+        const meta = flightMetaParts(flight, now, t).join(' · ')
+
         return h(
           'article',
-          {
-            style: {
-              border: '1px solid ' + HAIRLINE,
-              borderRadius: 8,
-              background: WASH,
-              padding: '8px 9px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 7,
-              minWidth: 0,
-            },
-          },
+          { className: 'twr-card' },
           h(
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 } },
-            h(Dot, { color: flight.running ? GREEN : goal ? phaseColor(goal.phase) : GREY }),
+            h(StatusDot, { color: flight.running ? T.ok : goal ? phaseColor(goal.phase) : T.idle, live: flight.running }),
             h(
               'span',
-              {
-                style: {
-                  fontWeight: 600,
-                  fontSize: 12,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  minWidth: 0,
-                },
-              },
+              { className: 'twr-ellipsis', style: { fontWeight: 600, fontSize: 12.5, color: T.text, minWidth: 0 } },
               flight.cwdName,
             ),
-            flight.origin === 'subagent' ? h(Chip, { color: GREY }, t('flight.subagent')) : null,
+            current ? h(Chip, { color: T.brand }, t('chip.current')) : null,
+            flight.origin === 'subagent' ? h(Chip, { color: T.idle }, t('flight.subagent')) : null,
             h('span', { style: { flex: 1 } }),
-            h(
-              'span',
-              { style: { fontSize: 10, color: FAINT, fontVariantNumeric: 'tabular-nums' } },
-              flight.short,
-            ),
+            h('span', { className: 'twr-num', style: { fontSize: 10, color: T.faint } }, flight.short),
           ),
           goal
-            ? h(GoalBody, { goal, now })
-            : h('div', { style: { fontSize: 11, color: FAINT } }, t('flight.noGoal')),
+            ? h(GoalLine, { goal, now })
+            : h('div', { style: { fontSize: 11, color: T.faint } }, t('flight.noGoal')),
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 10, color: MUTED } },
-            flight.running
-              ? h(Chip, { color: GREEN }, t('flight.running'))
-              : goal && goal.phase !== 'complete'
-                ? h(Chip, { color: phaseColor(goal.phase) }, t('phase.' + goal.phase))
-                : null,
-            liveJobs.length > 0 ? h('span', null, t('flight.jobs', { n: liveJobs.length })) : null,
-            failedJobs.length > 0
-              ? h('span', { style: { color: RED } }, t('flight.failedJobs', { n: failedJobs.length }))
+            { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: 10, color: T.text2 } },
+            flight.running ? h(Chip, { color: T.ok }, t('flight.running')) : null,
+            goal && !flight.running && goal.phase !== 'complete'
+              ? h(Chip, { color: phaseColor(goal.phase) }, t('phase.' + goal.phase))
               : null,
+            liveJobs.length > 0 ? h('span', null, t('flight.jobs', { n: liveJobs.length })) : null,
+            failedJobs.length > 0 ? h('span', { style: { color: T.bad } }, t('flight.failedJobs', { n: failedJobs.length })) : null,
             h('span', { style: { flex: 1 } }),
-            h('span', { style: { color: FAINT, whiteSpace: 'nowrap' } }, flightMetaParts(flight, now, t).join(' · ')),
+            meta.length > 0 ? h('span', { style: { color: T.faint, whiteSpace: 'nowrap' } }, meta) : null,
           ),
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' } },
-            h(Button, { onClick: () => openSession(flight.sessionId) }, t('act.open')),
+            { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 1 } },
+            h(Button, { tone: 'ghost', onClick: () => openSession(flight.sessionId) }, t('act.open')),
             goal && goal.phase === 'active' && goal.activation === 'armed'
               ? h(
                   Button,
                   {
                     disabled: busy,
                     onClick: () =>
-                      action.run(goalKey + ':pause', {
+                      action.run(goalKey + 'pause', {
                         action: 'goal.pause',
                         sessionId: flight.sessionId,
                         goalId: goal.id,
@@ -766,7 +911,7 @@ window.__ModuleLoader__.load({
                   {
                     disabled: busy,
                     onClick: () =>
-                      action.run(goalKey + ':resume', {
+                      action.run(goalKey + 'resume', {
                         action: 'goal.resume',
                         sessionId: flight.sessionId,
                         goalId: goal.id,
@@ -780,10 +925,10 @@ window.__ModuleLoader__.load({
               ? h(
                   Button,
                   {
-                    tone: 'primary',
+                    tone: 'accent',
                     disabled: busy,
                     onClick: () =>
-                      action.run(goalKey + ':complete', {
+                      action.run(goalKey + 'complete', {
                         action: 'goal.complete',
                         sessionId: flight.sessionId,
                         goalId: goal.id,
@@ -800,80 +945,58 @@ window.__ModuleLoader__.load({
       function AttentionItem(props) {
         const item = props.item
         const action = props.action
+        const onSnooze = props.onSnooze
+        const goal = props.goal
         const urgent = item.level === 'urgent'
-        const color = urgent ? RED : AMBER
+        const color = urgent ? T.bad : T.warn
         const jobKey = 'job:' + item.jobId + ':' + item.sessionId
         return h(
           'div',
           {
             style: {
-              borderLeft: '2px solid ' + color,
-              background: 'color-mix(in srgb, ' + color + ' 7%, transparent)',
-              borderRadius: '0 6px 6px 0',
-              padding: '6px 8px',
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
+              padding: '7px 9px 7px 10px',
+              borderRadius: 8,
+              border: '1px solid ' + (urgent ? 'color-mix(in srgb, ' + T.bad + ' 26%, transparent)' : T.border),
+              borderLeft: '3px solid ' + color,
+              background: urgent ? 'color-mix(in srgb, ' + T.bad + ' 6%, transparent)' : T.surface,
               minWidth: 0,
             },
           },
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, minWidth: 0 } },
-            h('span', { style: { color, fontWeight: 600, whiteSpace: 'nowrap' } }, item.label),
-            h(
-              'span',
-              {
-                style: {
-                  color: 'inherit',
-                  fontSize: 11,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                },
-              },
-              item.title,
-            ),
+            { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, minWidth: 0 } },
+            h('span', { style: { color: T.text, fontWeight: 600, whiteSpace: 'nowrap' } }, item.label),
+            h('span', { className: 'twr-ellipsis', style: { color: T.text2, minWidth: 0 } }, item.title),
             h('span', { style: { flex: 1 } }),
-            h('span', { style: { color: FAINT, fontSize: 10 } }, formatElapsed(item.at, props.now) + '前'),
+            h('span', { className: 'twr-num', style: { color: T.faint, fontSize: 10 } }, formatElapsed(item.at, props.now) + '前'),
           ),
           item.detail
-            ? h(
-                'div',
-                {
-                  style: {
-                    fontSize: 10,
-                    lineHeight: 1.5,
-                    color: MUTED,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                  },
-                },
-                item.detail,
-              )
+            ? h('div', { className: 'twr-clamp2', style: { fontSize: 10.5, lineHeight: 1.55, color: T.muted } }, item.detail)
             : null,
           h(
             'div',
-            { style: { display: 'flex', gap: 5 } },
-            item.code === 'job.failed' ? h(Chip, { color: RED }, t('job.failed')) : null,
-            item.code === 'goal.paused'
+            { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' } },
+            item.code === 'job.failed' ? h(Chip, { color: T.bad }, t('job.failed')) : null,
+            item.code === 'goal.paused' && goal
               ? h(
                   Button,
                   {
+                    tone: 'accent',
+                    disabled: action.pending === 'attn:' + item.sessionId,
                     onClick: () =>
                       action.run('attn:' + item.sessionId, {
                         action: 'goal.resume',
                         sessionId: item.sessionId,
-                        goalId: props.goalId,
-                        revision: props.goalRevision,
+                        goalId: goal.id,
+                        revision: goal.revision,
                       }),
                   },
                   t('act.resume'),
                 )
               : null,
-            h(Button, { onClick: () => openSession(item.sessionId) }, t('act.open')),
             item.code === 'job.failed' && item.jobId
               ? h(
                   Button,
@@ -885,433 +1008,555 @@ window.__ModuleLoader__.load({
                   t('act.kill'),
                 )
               : null,
+            h(Button, { tone: 'ghost', onClick: () => props.onOpen(item.sessionId) }, t('act.open')),
+            h('span', { style: { flex: 1 } }),
+            h(Button, { tone: 'ghost', title: t('act.snoozeHint'), onClick: () => onSnooze(item) }, t('act.snooze')),
           ),
         )
       }
 
-      return function TowerPanel() {
+      function PanelBody(props) {
         const snapshot = useSnapshot()
         const action = useAction()
         const now = Date.now()
-        const counts = snapshot.counts || EMPTY_COUNTS
+
+        const ownSession = props && props.sessionId ? String(props.sessionId) : ''
+        const allFlights = snapshot.flights || []
+        const allSchedules = snapshot.schedules || []
+        const [scope, setScope] = React.useState('all')
+        const [snooze, setSnooze] = React.useState(readSnooze)
+        const [copied, setCopied] = React.useState('')
+        const [jobsOpen, setJobsOpen] = React.useState(null)
+        const [schedulesOpen, setSchedulesOpen] = React.useState(null)
+        const [refreshing, setRefreshing] = React.useState(false)
+
+        const showScope = Boolean(ownSession) && allFlights.length > 1
+        const activeScope = showScope ? scope : 'all'
+        const flights = activeScope === 'mine' ? allFlights.filter((flight) => flight.sessionId === ownSession) : allFlights
+        const schedules =
+          activeScope === 'mine'
+            ? allSchedules.filter((entry) => entry.targetSessionId === ownSession)
+            : allSchedules
+
+        const snoozeMap = {}
+        for (const key of Object.keys(snooze)) {
+          const until = Number(snooze[key])
+          if (Number.isFinite(until) && until > now) snoozeMap[key] = until
+        }
+        const rawAttention = (snapshot.attention || []).filter(
+          (item) => activeScope !== 'mine' || item.sessionId === ownSession,
+        )
+        const attention = rawAttention.filter((item) => !snoozeMap[attentionKey(item)])
+        const snoozedCount = rawAttention.length - attention.length
+
+        const goalBySession = {}
+        for (const flight of allFlights) goalBySession[flight.sessionId] = flight.goal
 
         const jobs = []
-        for (const flight of snapshot.flights) {
+        for (const flight of flights) {
           for (const job of flight.jobs) {
-            if (job.status === 'running' || job.status === 'stopping' || job.status === 'failed') {
-              jobs.push({ job, flight })
-            }
+            if (job.status === 'running' || job.status === 'stopping' || job.status === 'failed') jobs.push({ job, flight })
           }
         }
 
-        const goalBySession = {}
-        for (const flight of snapshot.flights) goalBySession[flight.sessionId] = flight.goal
+        const counts = {
+          live: flights.length,
+          running: flights.filter((flight) => flight.running).length,
+          urgent: attention.filter((item) => item.level === 'urgent').length,
+          jobsLive: jobs.filter((row) => row.job.status === 'running' || row.job.status === 'stopping').length,
+          schedules: schedules.filter((entry) => entry.status === 'active').length,
+        }
+
+        function snoozeItem(item) {
+          const next = Object.assign({}, snooze, { [attentionKey(item)]: now + SNOOZE_MS })
+          setSnooze(next)
+          writeSnooze(next)
+        }
+
+        function restoreSnoozed() {
+          setSnooze({})
+          writeSnooze({})
+        }
+
+        function onCopy(key, prompt) {
+          copyText(prompt)
+          setCopied(key)
+          window.setTimeout(() => setCopied(''), 1400)
+        }
+
+        const jobsExpanded = jobsOpen === null ? jobs.length > 0 : jobsOpen
+        const schedulesExpanded = schedulesOpen === null ? schedules.length > 0 : schedulesOpen
+        const loading = snapshot.loading && !snapshot.at
+        const banner = action.error || (!snapshot.ok && snapshot.error ? snapshot.error : '')
+
+        const statItems = [
+          { key: 'live', value: counts.live, color: T.text },
+          { key: 'running', value: counts.running, color: T.ok },
+          { key: 'urgent', value: counts.urgent, color: T.bad },
+          { key: 'jobs', value: counts.jobsLive, color: T.text },
+          { key: 'schedules', value: counts.schedules, color: T.text },
+        ]
 
         return h(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              minWidth: 0,
-              minHeight: 0,
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              fontSize: 12,
-              color: 'inherit',
-            },
-          },
-          // 头部：身份 + 刷新
+          React.Fragment,
+          null,
+          h('style', null, CSS),
           h(
             'div',
             {
+              className: 'twr-root',
               style: {
                 display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '9px 12px 8px',
-                borderBottom: '1px solid ' + HAIRLINE_SOFT,
+                flexDirection: 'column',
+                height: '100%',
+                minWidth: 0,
+                minHeight: 0,
+                overflow: 'hidden',
+                fontSize: 12,
+                color: T.text,
+                background: T.sidebar,
               },
             },
-            h(Glyph, { size: 15 }),
-            h('span', { style: { fontWeight: 600, fontSize: 12 } }, t('title')),
-            h('span', { style: { color: FAINT, fontSize: 10 } }, t('head.sub')),
-            h('span', { style: { flex: 1 } }),
+            // 头部
             h(
-              'button',
+              'div',
               {
-                type: 'button',
-                title: t('head.refresh'),
-                'aria-label': t('head.refresh'),
-                onClick: () => store.refresh(),
                 style: {
-                  display: 'inline-flex',
+                  display: 'flex',
                   alignItems: 'center',
-                  height: 20,
-                  padding: '0 6px',
-                  borderRadius: 5,
-                  border: '1px solid ' + HAIRLINE,
-                  background: 'transparent',
-                  color: MUTED,
-                  font: 'inherit',
-                  fontSize: 10,
-                  cursor: 'pointer',
+                  gap: 6,
+                  padding: '9px 12px 7px',
+                  borderBottom: '1px solid ' + T.border,
                 },
               },
-              snapshot.loading ? '…' : '↻',
+              h(Glyph, { size: 15 }),
+              h('span', { style: { fontWeight: 600, fontSize: 12.5 } }, t('title')),
+              h('span', { style: { color: T.faint, fontSize: 10 } }, t('head.sub')),
+              h('span', { style: { flex: 1 } }),
+              h(
+                IconButton,
+                {
+                  title: t('head.refresh'),
+                  spin: refreshing,
+                  onClick: async () => {
+                    setRefreshing(true)
+                    await store.refresh()
+                    window.setTimeout(() => setRefreshing(false), 400)
+                  },
+                },
+                h('span', { style: { fontSize: 13, lineHeight: 1 } }, '↻'),
+              ),
             ),
-          ),
-          // 计数条
-          h(
-            'div',
-            {
-              style: {
-                display: 'flex',
-                alignItems: 'stretch',
-                borderBottom: '1px solid ' + HAIRLINE_SOFT,
-                background: WASH,
+            // 状态行：作用域 + 一句话计数
+            h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  padding: '7px 12px',
+                  borderBottom: '1px solid ' + T.border,
+                  background: T.surface,
+                },
               },
-            },
-            [
-              ['strip.live', counts.live, GREEN],
-              ['strip.attention', counts.urgent + counts.waiting, counts.urgent > 0 ? RED : AMBER],
-              ['strip.jobs', counts.jobs, GREEN],
-              ['strip.schedules', counts.schedules, MUTED],
-            ].map((cell, index) =>
+              showScope
+                ? h(
+                    'div',
+                    { className: 'twr-scope' },
+                    h(
+                      'button',
+                      { type: 'button', 'data-on': activeScope === 'all' ? '1' : '0', onClick: () => setScope('all') },
+                      t('scope.all'),
+                    ),
+                    h(
+                      'button',
+                      { type: 'button', 'data-on': activeScope === 'mine' ? '1' : '0', onClick: () => setScope('mine') },
+                      t('scope.mine'),
+                    ),
+                  )
+                : null,
               h(
                 'div',
-                {
-                  key: cell[0],
-                  style: {
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 1,
-                    padding: '6px 2px 5px',
-                    borderLeft: index === 0 ? 'none' : '1px solid ' + HAIRLINE_SOFT,
-                    minWidth: 0,
-                  },
-                },
-                h(
-                  'span',
-                  {
-                    style: {
-                      fontSize: 14,
-                      fontWeight: 600,
-                      lineHeight: 1.2,
-                      color: cell[1] > 0 ? cell[2] : MUTED,
-                      fontVariantNumeric: 'tabular-nums',
-                    },
-                  },
-                  String(cell[1]),
-                ),
-                h(
-                  'span',
-                  {
-                    style: {
-                      fontSize: 9,
-                      color: FAINT,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      maxWidth: '100%',
-                    },
-                  },
-                  t(cell[0]),
+                { style: { display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', fontSize: 10.5, color: T.text2 } },
+                statItems.map((stat) =>
+                  h(
+                    'span',
+                    { key: stat.key, style: { display: 'inline-flex', alignItems: 'baseline', gap: 3, whiteSpace: 'nowrap' } },
+                    h(
+                      'span',
+                      {
+                        className: 'twr-num',
+                        style: {
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: stat.value > 0 ? stat.color : T.faint,
+                        },
+                      },
+                      String(stat.value),
+                    ),
+                    h('span', { style: { color: T.faint } }, t('strip.' + stat.key)),
+                  ),
                 ),
               ),
             ),
-          ),
-          // 主体
-          h(
-            'div',
-            { style: { flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 } },
-            action.error
-              ? h(
-                  'div',
-                  {
-                    style: {
-                      margin: '8px 12px 0',
-                      padding: '6px 8px',
-                      borderRadius: 6,
-                      fontSize: 11,
-                      lineHeight: 1.5,
-                      color: RED,
-                      background: 'color-mix(in srgb, ' + RED + ' 10%, transparent)',
-                      border: '1px solid color-mix(in srgb, ' + RED + ' 26%, transparent)',
-                      display: 'flex',
-                      gap: 6,
-                    },
-                  },
-                  h('span', { style: { flex: 1 } }, action.error),
-                  h(
-                    'button',
+            // 主体
+            h(
+              'div',
+              { className: 'twr-scroll', style: { flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 10 } },
+              banner
+                ? h(
+                    'div',
                     {
-                      type: 'button',
-                      onClick: action.clear,
+                      className: 'twr-banner',
                       style: {
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'inherit',
-                        cursor: 'pointer',
-                        font: 'inherit',
-                        fontSize: 11,
+                        margin: '9px 12px 0',
+                        color: action.error ? T.bad : T.warn,
+                        background: 'color-mix(in srgb, ' + (action.error ? T.bad : T.warn) + ' 9%, transparent)',
+                        border: '1px solid color-mix(in srgb, ' + (action.error ? T.bad : T.warn) + ' 26%, transparent)',
                       },
                     },
-                    '×',
-                  ),
-                )
-              : null,
-            !snapshot.ok && snapshot.error
-              ? h(
-                  'div',
-                  {
-                    style: {
-                      margin: '8px 12px 0',
-                      padding: '8px',
-                      borderRadius: 6,
-                      fontSize: 11,
-                      lineHeight: 1.5,
-                      color: AMBER,
-                      background: 'color-mix(in srgb, ' + AMBER + ' 10%, transparent)',
-                      border: '1px solid color-mix(in srgb, ' + AMBER + ' 28%, transparent)',
-                    },
-                  },
-                  h('div', { style: { fontWeight: 600, marginBottom: 2 } }, t('err.title')),
-                  h('div', { style: { color: MUTED } }, t('err.hint')),
-                  h('div', { style: { color: FAINT, marginTop: 3 } }, snapshot.error),
-                )
-              : null,
-
-            // ① 需要你
-            snapshot.attention.length > 0
-              ? h(
-                  Section,
-                  { title: t('section.attention'), count: snapshot.attention.length },
-                  snapshot.attention.map((item, index) => {
-                    const goal = goalBySession[item.sessionId]
-                    return h(AttentionItem, {
-                      key: item.code + ':' + item.sessionId + ':' + (item.jobId || index),
-                      item,
-                      now,
-                      action,
-                      goalId: goal ? goal.id : '',
-                      goalRevision: goal ? goal.revision : 0,
-                    })
-                  }),
-                )
-              : null,
-
-            // ② 航班
-            h(
-              Section,
-              { title: t('section.flights'), count: snapshot.flights.length },
-              [
-                snapshot.flights.length === 0
-                  ? snapshot.loading || !snapshot.at
-                    ? h('div', { style: { fontSize: 11, color: FAINT, padding: '6px 0' } }, '…')
-                    : h(EmptyGuide, { t })
-                  : snapshot.flights.map((flight) =>
-                      h(FlightCard, { key: flight.sessionId, flight, now, action }),
-                    ),
-                snapshot.flights.length > 0 && counts.goals === 0
-                  ? h(
-                      'div',
-                      { style: { fontSize: 10, lineHeight: 1.6, color: FAINT, padding: '2px 0 0' } },
-                      t('flights.hint.goal'),
-                    )
-                  : null,
-              ],
-            ),
-
-            // ③ 后台
-            h(
-              Section,
-              { title: t('section.jobs'), count: jobs.length },
-              jobs.length === 0
-                ? h('div', { style: { fontSize: 11, color: FAINT, padding: '2px 0 4px' } }, t('empty.jobs'))
-                : jobs.map((row) =>
-                    h(
-                      'div',
-                      {
-                        key: row.job.id,
-                        style: {
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 3,
-                          padding: '6px 8px',
-                          border: '1px solid ' + HAIRLINE_SOFT,
-                          borderRadius: 6,
-                          background: WASH,
-                          minWidth: 0,
-                        },
-                      },
-                      h(
-                        'div',
-                        { style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
-                        h(Chip, { color: jobColor(row.job.status) }, jobStatusLabel(t, row.job.status)),
-                        h(
-                          'span',
+                    h('span', { style: { flex: 1, minWidth: 0 } }, banner),
+                    action.error
+                      ? h(
+                          'button',
                           {
+                            type: 'button',
+                            className: 'twr-btn twr-btn--ghost',
+                            style: { height: 18, padding: '0 6px' },
+                            onClick: action.clear,
+                          },
+                          '×',
+                        )
+                      : h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'twr-btn twr-btn--ghost',
+                            style: { height: 18, padding: '0 6px' },
+                            onClick: () => store.refresh(),
+                          },
+                          t('head.refresh'),
+                        ),
+                  )
+                : null,
+
+              loading
+                ? h('div', { style: { padding: '14px 12px' } }, h(Skeleton, null))
+                : null,
+
+              // ① 需要你
+              attention.length > 0
+                ? h(
+                    Section,
+                    {
+                      title: t('section.attention'),
+                      count: attention.length,
+                      kind: 'attention',
+                      trailing:
+                        snoozedCount > 0
+                          ? h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'twr-btn twr-btn--ghost',
+                                style: { height: 18, padding: '0 6px', fontSize: 10 },
+                                onClick: restoreSnoozed,
+                              },
+                              t('snooze.note', { n: snoozedCount }),
+                            )
+                          : null,
+                    },
+                    attention.map((item, index) =>
+                      h(AttentionItem, {
+                        key: attentionKey(item) + ':' + index,
+                        item,
+                        now,
+                        action,
+                        onOpen: openSession,
+                        onSnooze: snoozeItem,
+                        goal: goalBySession[item.sessionId],
+                      }),
+                    ),
+                  )
+                : null,
+
+              // ② 航班
+              h(
+                Section,
+                { title: t('section.flights'), count: flights.length, kind: 'flights' },
+                flights.length === 0
+                  ? loading
+                    ? null
+                    : h(EmptyGuide, { t, onCopy, copied })
+                  : h(
+                      'div',
+                      { className: 'twr-grid' },
+                      flights.map((flight) =>
+                        h(FlightCard, {
+                          key: flight.sessionId,
+                          flight,
+                          now,
+                          action,
+                          current: Boolean(ownSession) && flight.sessionId === ownSession,
+                        }),
+                      ),
+                    ),
+                flights.length > 0 && !flights.some((flight) => flight.goal)
+                  ? h('div', { style: { fontSize: 10, lineHeight: 1.6, color: T.faint } }, t('flights.hint.goal'))
+                  : null,
+              ),
+
+              // ③ 后台
+              h(
+                Section,
+                {
+                  title: t('section.jobs'),
+                  count: jobs.length,
+                  kind: 'jobs',
+                  trailing:
+                    jobs.length > 0
+                      ? h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'twr-plus',
+                            title: jobsExpanded ? t('act.collapse') : t('act.expand'),
+                            onClick: () => setJobsOpen(!jobsExpanded),
+                          },
+                          jobsExpanded ? '−' : '+',
+                        )
+                      : null,
+                },
+                jobs.length === 0
+                  ? h(EmptyLine, null, t('empty.jobs'))
+                  : jobsExpanded
+                    ? jobs.map((row) =>
+                        h(
+                          'div',
+                          {
+                            key: row.job.id,
                             style: {
-                              fontSize: 11,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 3,
+                              padding: '6px 9px',
+                              border: '1px solid ' + T.border,
+                              borderRadius: 8,
+                              background: T.surface,
                               minWidth: 0,
                             },
                           },
-                          row.job.label,
-                        ),
-                        h('span', { style: { flex: 1 } }),
-                        h('span', { style: { fontSize: 10, color: FAINT } }, formatBytes(row.job.outputBytes)),
-                      ),
-                      h(
-                        'div',
-                        { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: MUTED } },
-                        h('span', { style: { color: FAINT } }, row.flight.cwdName),
-                        h('span', { style: { color: FAINT } }, '·'),
-                        h(
-                          'span',
-                          { style: { fontVariantNumeric: 'tabular-nums' } },
-                          row.job.status === 'running'
-                            ? formatElapsed(row.job.startedAt, now)
-                            : formatElapsed(row.job.startedAt, row.job.finishedAt || now),
-                        ),
-                        row.job.progress
-                          ? h(
-                              'span',
-                              {
-                                style: {
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  minWidth: 0,
-                                },
-                              },
-                              '· ' + row.job.progress,
-                            )
-                          : null,
-                        h('span', { style: { flex: 1 } }),
-                        row.job.status === 'running' || row.job.status === 'stopping'
-                          ? h(
-                              Button,
-                              {
-                                tone: 'danger',
-                                disabled: action.pending === 'kill:' + row.job.id,
-                                onClick: () =>
-                                  action.run('kill:' + row.job.id, {
-                                    action: 'job.kill',
-                                    jobId: row.job.id,
-                                    sessionId: row.flight.sessionId,
-                                  }),
-                              },
-                              t('act.kill'),
-                            )
-                          : null,
-                      ),
-                      row.job.detail
-                        ? h(
+                          h(
                             'div',
-                            {
-                              style: {
-                                fontSize: 10,
-                                color: row.job.status === 'failed' ? RED : FAINT,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              },
-                            },
-                            row.job.detail,
-                          )
-                        : null,
-                    ),
-                  ),
-            ),
+                            { style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
+                            h(Chip, { color: jobColor(row.job.status) }, jobStatusLabel(t, row.job.status)),
+                            h(
+                              'span',
+                              { className: 'twr-ellipsis', style: { fontSize: 11, color: T.text, minWidth: 0 } },
+                              row.job.label,
+                            ),
+                            h('span', { style: { flex: 1 } }),
+                            h('span', { className: 'twr-num', style: { fontSize: 10, color: T.faint } }, formatBytes(row.job.outputBytes)),
+                          ),
+                          h(
+                            'div',
+                            { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: T.text2, minWidth: 0 } },
+                            h('span', { style: { color: T.faint, whiteSpace: 'nowrap' } }, row.flight.cwdName),
+                            h('span', { className: 'twr-num', style: { color: T.faint } }, '·'),
+                            h(
+                              'span',
+                              { className: 'twr-num', style: { whiteSpace: 'nowrap' } },
+                              row.job.status === 'running'
+                                ? formatElapsed(row.job.startedAt, now)
+                                : formatElapsed(row.job.startedAt, row.job.finishedAt || now),
+                            ),
+                            row.job.progress ? h('span', { className: 'twr-ellipsis', style: { minWidth: 0 } }, '· ' + row.job.progress) : null,
+                            h('span', { style: { flex: 1 } }),
+                            row.job.status === 'running' || row.job.status === 'stopping'
+                              ? h(
+                                  Button,
+                                  {
+                                    tone: 'danger',
+                                    disabled: action.pending === 'kill:' + row.job.id,
+                                    onClick: () =>
+                                      action.run('kill:' + row.job.id, {
+                                        action: 'job.kill',
+                                        jobId: row.job.id,
+                                        sessionId: row.flight.sessionId,
+                                      }),
+                                  },
+                                  t('act.kill'),
+                                )
+                              : null,
+                          ),
+                          row.job.detail
+                            ? h(
+                                'div',
+                                {
+                                  className: 'twr-ellipsis',
+                                  style: { fontSize: 10, color: row.job.status === 'failed' ? T.bad : T.faint },
+                                },
+                                row.job.detail,
+                              )
+                            : null,
+                        ),
+                      )
+                    : null,
+              ),
 
-            // ④ 定时
-            h(
-              Section,
-              { title: t('section.schedules'), count: snapshot.schedules.length },
-              snapshot.schedules.length === 0
-                ? h('div', { style: { fontSize: 11, color: FAINT, padding: '2px 0 4px' } }, t('empty.schedules'))
-                : snapshot.schedules.map((entry) =>
-                    h(
-                      'div',
-                      {
-                        key: entry.id,
-                        style: {
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          padding: '5px 8px',
-                          border: '1px solid ' + HAIRLINE_SOFT,
-                          borderRadius: 6,
-                          background: WASH,
-                          minWidth: 0,
-                        },
-                      },
-                      h(Chip, { color: entry.status === 'active' ? GREEN : AMBER }, t('sched.' + entry.status)),
-                      h(
-                        'span',
-                        {
-                          style: {
-                            fontSize: 11,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            minWidth: 0,
+              // ④ 定时
+              h(
+                Section,
+                {
+                  title: t('section.schedules'),
+                  count: schedules.length,
+                  kind: 'schedules',
+                  trailing:
+                    schedules.length > 0
+                      ? h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'twr-plus',
+                            title: schedulesExpanded ? t('act.collapse') : t('act.expand'),
+                            onClick: () => setSchedulesOpen(!schedulesExpanded),
                           },
-                        },
-                        entry.title,
-                      ),
-                      h('span', { style: { flex: 1 } }),
-                      h(
-                        'span',
-                        { style: { fontSize: 10, color: FAINT, whiteSpace: 'nowrap' } },
-                        entry.status === 'active'
-                          ? formatAhead(entry.scheduledAt, now, t)
-                          : entry.scheduledAt
-                            ? formatAhead(entry.scheduledAt, now, t)
-                            : t('sched.target.session'),
-                      ),
-                      h(
-                        Button,
-                        {
-                          disabled: action.pending === 'schedule:' + entry.id,
-                          onClick: () =>
-                            action.run('schedule:' + entry.id, { action: 'schedule.run', scheduleId: entry.id }),
-                        },
-                        t('act.runNow'),
-                      ),
-                    ),
-                  ),
+                          schedulesExpanded ? '−' : '+',
+                        )
+                      : null,
+                },
+                schedules.length === 0
+                  ? h(EmptyLine, null, t('empty.schedules'))
+                  : schedulesExpanded
+                    ? schedules.map((entry) =>
+                        h(
+                          'div',
+                          {
+                            key: entry.id,
+                            style: {
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '5px 9px',
+                              border: '1px solid ' + T.border,
+                              borderRadius: 8,
+                              background: T.surface,
+                              minWidth: 0,
+                            },
+                          },
+                          h(Chip, { color: entry.status === 'active' ? T.ok : T.warn }, t('sched.' + entry.status)),
+                          h('span', { className: 'twr-ellipsis', style: { fontSize: 11, color: T.text, minWidth: 0 } }, entry.title),
+                          h('span', { style: { flex: 1 } }),
+                          h(
+                            'span',
+                            { className: 'twr-num', style: { fontSize: 10, color: T.faint, whiteSpace: 'nowrap' } },
+                            entry.scheduledAt ? formatAhead(entry.scheduledAt, now, t) : t('sched.target.session'),
+                          ),
+                          h(
+                            Button,
+                            {
+                              disabled: action.pending === 'schedule:' + entry.id,
+                              onClick: () =>
+                                action.run('schedule:' + entry.id, { action: 'schedule.run', scheduleId: entry.id }),
+                            },
+                            t('act.runNow'),
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
             ),
-          ),
-          // 页脚
-          h(
-            'div',
-            {
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                borderTop: '1px solid ' + HAIRLINE_SOFT,
-                fontSize: 9,
-                color: FAINT,
+            // 页脚
+            h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderTop: '1px solid ' + T.border,
+                  fontSize: 9.5,
+                  color: T.faint,
+                },
               },
-            },
-            h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t('foot.note')),
-            h('span', { style: { fontVariantNumeric: 'tabular-nums' } }, snapshot.at ? formatClock(snapshot.at) : '—'),
+              h('span', { className: 'twr-ellipsis', style: { flex: 1 } }, t('foot.note')),
+              h('span', { className: 'twr-num', style: { whiteSpace: 'nowrap' } }, snapshot.at ? formatClock(snapshot.at) : '—'),
+            ),
           ),
         )
       }
+    
+
+      /**
+       * 渲染边界：面板内部任何异常都收敛成一句可读错误 + 重试，
+       * 绝不让右栏变成白屏（白屏会让用户以为整个宿主坏了）。
+       */
+      class PanelBoundary extends React.Component {
+        constructor(props) {
+          super(props)
+          this.state = { error: '' }
+        }
+
+        static getDerivedStateFromError(error) {
+          return { error: String(error && error.message ? error.message : error) }
+        }
+
+        componentDidCatch(error) {
+          try {
+            console.warn('[tower] 面板渲染异常：', error)
+          } catch {
+            /* 控制台不可用也不影响兜底 */
+          }
+        }
+
+        render() {
+          if (!this.state.error) return this.props.children
+          return h(
+            'div',
+            {
+              className: 'twr-root',
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: '16px 14px',
+                fontSize: 12,
+                color: T.text,
+                background: T.sidebar,
+                height: '100%',
+              },
+            },
+            h('style', null, CSS),
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', gap: 6, color: T.warn } },
+              h(Glyph, { size: 15 }),
+              h('span', { style: { fontWeight: 600 } }, t('crash.title')),
+            ),
+            h('div', { style: { fontSize: 11, lineHeight: 1.6, color: T.muted } }, t('crash.body')),
+            h('div', { style: { fontSize: 10.5, fontFamily: T.mono, color: T.faint, wordBreak: 'break-word' } }, this.state.error),
+            h(
+              'div',
+              { style: { display: 'flex', gap: 6, marginTop: 2 } },
+              h(
+                Button,
+                { onClick: () => this.setState({ error: '' }) },
+                t('crash.retry'),
+              ),
+              h(Button, { tone: 'ghost', onClick: () => openSession() }, t('act.open')),
+            ),
+          )
+        }
+      }
+
+      return function TowerPanel(props) {
+        return h(PanelBoundary, null, h(PanelBody, props))
+      }
     }
     // #endregion
-
     /** 标题 seat：chip 上的实时文案（带待处置计数）。 */
     function makeTitle(t, store) {
       return function TowerTitle() {
@@ -1321,35 +1566,21 @@ window.__ModuleLoader__.load({
         }, [])
         const urgent = snapshot.counts.urgent || 0
         return h(
-          'span',
-          { style: { display: 'inline-flex', alignItems: 'center', gap: 4 } },
-          h(Glyph, { size: 12 }),
-          h('span', null, t('title')),
-          urgent > 0
-            ? h(
-                'span',
-                {
-                  style: {
-                    minWidth: 14,
-                    height: 14,
-                    padding: '0 4px',
-                    borderRadius: 999,
-                    background: RED,
-                    color: '#fff',
-                    fontSize: 9,
-                    lineHeight: '14px',
-                    textAlign: 'center',
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                },
-                String(urgent),
-              )
-            : null,
+          React.Fragment,
+          null,
+          h('style', null, CSS),
+          h(
+            'span',
+            { style: { display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 } },
+            h(Glyph, { size: 12 }),
+            h('span', { className: 'twr-ellipsis' }, t('title')),
+            urgent > 0 ? h('span', { className: 'twr-entry__badge' }, String(urgent)) : null,
+          ),
         )
       }
     }
 
-    /** 输入框工具栏入口：一眼可见的「塔台」入口 + 待处置角标。 */
+    /** 输入框工具栏入口：常驻入口 + 待处置角标。 */
     function makeEntry(t, store, openPanel) {
       return function TowerEntryButton() {
         const [snapshot, setSnapshot] = React.useState(store.get())
@@ -1358,39 +1589,24 @@ window.__ModuleLoader__.load({
         }, [])
         const urgent = snapshot.counts.urgent || 0
         const live = snapshot.counts.live || 0
-        const hint = t('entry.label') + (urgent > 0 ? ' · ' + t('section.attention') + ' ' + urgent : ' · ' + live)
+        const hint = t('entry.label') + (urgent > 0 ? ' · ' + t('strip.urgent') + ' ' + urgent : ' · ' + live)
         return h(
-          'button',
-          {
-            type: 'button',
-            title: hint,
-            'aria-label': hint,
-            onClick: openPanel,
-            style: {
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              height: 24,
-              padding: '0 7px',
-              borderRadius: 7,
-              border: '1px solid ' + (urgent > 0 ? 'color-mix(in srgb, ' + RED + ' 45%, transparent)' : HAIRLINE),
-              background: urgent > 0 ? 'color-mix(in srgb, ' + RED + ' 10%, transparent)' : 'transparent',
-              color: urgent > 0 ? RED : 'inherit',
-              font: 'inherit',
-              fontSize: 11,
-              lineHeight: 1,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
+          React.Fragment,
+          null,
+          h('style', null, CSS),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'twr-entry',
+              'data-urgent': urgent > 0 ? '1' : '0',
+              title: hint,
+              'aria-label': hint,
+              onClick: openPanel,
             },
-          },
-          h(Glyph, { size: 13 }),
-          urgent > 0
-            ? h(
-                'span',
-                { style: { fontVariantNumeric: 'tabular-nums', fontSize: 10, fontWeight: 600 } },
-                String(urgent),
-              )
-            : null,
+            h(Glyph, { size: 13 }),
+            urgent > 0 ? h('span', { className: 'twr-entry__badge' }, String(urgent)) : null,
+          ),
         )
       }
     }
