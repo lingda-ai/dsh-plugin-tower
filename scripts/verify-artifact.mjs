@@ -34,8 +34,23 @@ let packedRoot = null
 if (wantPack) {
   const tmp = join(process.env.TMPDIR || '/tmp', 'tower-artifact-' + process.pid)
   mkdirSync(tmp, { recursive: true })
-  const pnpm = process.env.PNPM_BIN || 'pnpm'
-  execFileSync(pnpm, ['pack', '--pack-destination', tmp], { stdio: 'pipe' })
+  // 打包器回退：显式指定的 → pnpm → npm。CI 里两者可能只装了一个。
+  const attempts = [process.env.PNPM_BIN, 'pnpm', 'npm'].filter(Boolean)
+  let packed = false
+  let lastError = null
+  for (const bin of attempts) {
+    try {
+      execFileSync(bin, ['pack', '--pack-destination', tmp], { stdio: 'pipe' })
+      packed = true
+      break
+    } catch (error) {
+      lastError = error
+    }
+  }
+  if (!packed) {
+    console.error('打包失败：pnpm 与 npm 都不可用 → ' + String(lastError && lastError.message).slice(0, 120))
+    process.exit(2)
+  }
   const tarball = readdirSync(tmp).find((name) => name.endsWith('.tgz'))
   if (!tarball) {
     console.error('pack 失败：没有生成 tarball')
@@ -61,6 +76,16 @@ if (!artifact || !existsSync(artifact)) {
   console.error('artifact 目录不存在：' + artifact)
   process.exit(2)
 }
+// 缺文件要在解析任何内容之前就报出来，否则脚本会以未捕获异常的形式崩掉——
+// 闸门必须「清晰地失败」，而不是「看起来崩了」。
+const required = ['package.json', 'index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/zh.json', 'locale/en.json']
+const missing = required.filter((file) => !existsSync(join(artifact, file)))
+if (missing.length > 0) {
+  console.error('FAIL 产物缺文件：' + missing.join(', '))
+  console.error('ARTIFACT FAILED (缺文件)')
+  process.exit(1)
+}
+
 console.log('# 产物验收：' + artifact + '\n')
 
 // ---------- 1) manifest ----------

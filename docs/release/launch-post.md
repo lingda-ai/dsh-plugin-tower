@@ -85,6 +85,8 @@
 dsh plugin --profile <你的profile> add dsh-plugin-tower
 ```
 
+> 当前版本 **0.7.2**（npm）。仓库里 223 条断言、产物闸门 33 项，都在 README 里可复算。
+
 装完右栏会出现「塔台」tab；输入框工具行也有一个入口，有待处置时亮红角标。
 
 > 首次安装立即生效。**替换版本需要重启一次** Harness（模块代机制），这点我在 README 里写明了。

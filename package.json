@@ -61,6 +61,7 @@
   },
   "scripts": {
     "test": "for f in test/*.mjs; do node \"$f\" || exit 1; done",
-    "verify:artifact": "node scripts/verify-artifact.mjs --pack --tests ./test"
+    "verify:artifact": "node scripts/verify-artifact.mjs --pack --tests ./test",
+    "prepublishOnly": "node scripts/verify-artifact.mjs --pack --tests ./test"
   }
 }
