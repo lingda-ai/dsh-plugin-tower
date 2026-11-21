@@ -56,6 +56,13 @@ window.__ModuleLoader__.load({
         'cap.log': '作业日志',
         'cap.schedule': '定时',
         'cap.sessions': '会话',
+        'section.closed': '已收场',
+        'closed.empty': '没有带目标的已关闭会话',
+        'closed.loading': '读取已关闭会话…',
+        'closed.failed': '读取失败',
+        'closed.note': '只读复算持久化日志，不会唤醒会话',
+        'act.reopen': '重新打开',
+        'cap.history': '历史',
         'section.recent': '最近处置',
         'recent.note': '本次运行内 · 只记你点过的动作',
         'verb.pause': '暂停',
@@ -160,6 +167,13 @@ window.__ModuleLoader__.load({
         'cap.log': 'Job log',
         'cap.schedule': 'Schedules',
         'cap.sessions': 'Sessions',
+        'section.closed': 'Closed',
+        'closed.empty': 'no closed session had a goal',
+        'closed.loading': 'reading closed sessions…',
+        'closed.failed': 'read failed',
+        'closed.note': 'read-only replay of the persisted log; the session is not woken',
+        'act.reopen': 'Reopen',
+        'cap.history': 'History',
         'section.recent': 'Recent actions',
         'recent.note': 'this run only · what you clicked',
         'verb.pause': 'Pause',
@@ -1171,6 +1185,7 @@ window.__ModuleLoader__.load({
         const [logs, setLogs] = React.useState({})
         const [cursor, setCursor] = React.useState(-1)
         const [capsOpen, setCapsOpen] = React.useState(false)
+        const [closed, setClosed] = React.useState({ loading: false, rows: [], error: '', loaded: false })
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1299,6 +1314,32 @@ window.__ModuleLoader__.load({
         const jobsExpanded = sectionOpen('jobs', jobs.length > 0)
         const schedulesExpanded = sectionOpen('schedules', schedules.length > 0)
         const recent = snapshot.recent || []
+        const closedExpanded = sectionOpen('closed', false)
+
+        const loadClosed = React.useCallback(async () => {
+          setClosed((prev) => Object.assign({}, prev, { loading: true, error: '' }))
+          try {
+            const response = await fetch(API + '?closed=1&limit=8', {
+              cache: 'no-store',
+              headers: { accept: 'application/json' },
+            })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            setClosed({ loading: false, rows: Array.isArray(data.closed) ? data.closed : [], error: '', loaded: true })
+          } catch (error) {
+            setClosed({
+              loading: false,
+              rows: [],
+              error: String(error && error.message ? error.message : error),
+              loaded: true,
+            })
+          }
+        }, [])
+
+        React.useEffect(() => {
+          if (closedExpanded && !closed.loaded && !closed.loading) loadClosed()
+        }, [closedExpanded, closed.loaded, closed.loading, loadClosed])
+
         const recentExpanded = sectionOpen('recent', false)
         const caps = snapshot.caps || null
         const missingCaps = caps ? Object.keys(caps).filter((key) => !caps[key]) : []
@@ -1823,6 +1864,90 @@ window.__ModuleLoader__.load({
                   h('div', { style: { fontSize: 9.5, lineHeight: 1.5, color: T.faint, width: '100%' } }, t('caps.hint')),
                 )
               : null,
+            // ⑥ 已收场（关掉的会话，只读复算最后目标）
+            h(
+              Section,
+              {
+                title: t('section.closed'),
+                count: closed.rows.length || 0,
+                kind: 'recent',
+                trailing: h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'twr-plus',
+                    title: closedExpanded ? t('act.collapse') : t('act.expand'),
+                    onClick: () => toggleSection('closed', false),
+                  },
+                  closedExpanded ? '−' : '+',
+                ),
+              },
+              closedExpanded
+                ? closed.loading
+                  ? h('div', { style: { padding: '2px 0' } }, h(Skeleton, null))
+                  : closed.error
+                    ? h('div', { style: { fontSize: 10.5, color: T.bad, lineHeight: 1.5 } }, t('closed.failed') + '：' + closed.error)
+                    : closed.rows.length === 0
+                      ? h(EmptyLine, null, t('closed.empty'))
+                      : closed.rows.map((row) =>
+                          h(
+                            'div',
+                            {
+                              key: row.sessionId,
+                              style: {
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 4,
+                                padding: '7px 9px',
+                                border: '1px solid ' + T.border,
+                                borderRadius: 8,
+                                background: T.surface,
+                                minWidth: 0,
+                                opacity: 0.92,
+                              },
+                            },
+                            h(
+                              'div',
+                              { style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 } },
+                              h(StatusDot, { color: phaseColor(row.goal.phase), live: false }),
+                              h(
+                                'span',
+                                { className: 'twr-ellipsis', style: { fontSize: 11.5, fontWeight: 600, minWidth: 0 } },
+                                row.cwdName,
+                              ),
+                              h(Chip, { color: phaseColor(row.goal.phase) }, t('phase.' + row.goal.phase)),
+                              h('span', { style: { flex: 1 } }),
+                              h(
+                                'span',
+                                { className: 'twr-num', style: { fontSize: 9.5, color: T.faint, whiteSpace: 'nowrap' } },
+                                row.goal.updatedAt ? formatClock(row.goal.updatedAt) : '',
+                              ),
+                            ),
+                            h(
+                              'div',
+                              { className: 'twr-clamp2', style: { fontSize: 11, lineHeight: 1.5, color: T.text2 } },
+                              row.goal.objective,
+                            ),
+                            h(
+                              'div',
+                              { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5, color: T.faint } },
+                              h(
+                                'span',
+                                { className: 'twr-num' },
+                                t('flight.rounds', { n: row.goal.roundsStarted, max: row.goal.maxGoalRounds || '∞' }),
+                              ),
+                              row.goal.blockedMessage
+                                ? h('span', { className: 'twr-ellipsis', style: { color: T.bad, minWidth: 0 } }, row.goal.blockedMessage)
+                                : null,
+                              h('span', { style: { flex: 1 } }),
+                              h(Button, { tone: 'ghost', onClick: () => openSession(row.sessionId) }, t('act.reopen')),
+                            ),
+                          ),
+                        )
+                : null,
+              closedExpanded ? h('div', { style: { fontSize: 9.5, color: T.faint, paddingTop: 2 } }, t('closed.note')) : null,
+            ),
+
             // 页脚
             h(
               'div',

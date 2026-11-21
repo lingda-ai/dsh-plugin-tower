@@ -72,6 +72,7 @@ Host 半只暴露一个同源前缀路由 `/dsh-tower/api`，无配置项、无�
 | `GET /dsh-tower/api` | 完整快照：`counts` / `attention` / `flights` / `schedules` |
 | `GET /dsh-tower/api?counts=1` | 轻量包：只要 `counts` + `attention`（输入框角标用，9s 一取） |
 | `GET /dsh-tower/api?job=<id>&session=<sid>&tail=4000` | 某条后台作业的输出尾部：只读、不动模型游标，最多 8KB，带 `truncated`/`lossy` 标记 |
+| `GET /dsh-tower/api?closed=1&limit=8` | 已关闭会话的最后目标：只读打开持久化日志复算，不唤醒会话；按持久化 revision 缓存 |
 | `POST /dsh-tower/api` | 一个动作，一次一个 |
 
 POST body 与动作：
@@ -100,6 +101,7 @@ POST body 与动作：
 - **密度切换**：紧凑 / 舒适，选择记在本机；紧凑模式收起元信息、压缩内距，适合多 agent 时一屏看全。
 - **折叠记忆**：后台作业、定时航班、最近处置的展开状态持久化，下次打开还是你上次的样子。
 - **最近处置**：只记「你点过且成功」的动作（内存 ring，重启即清），这是审计层（L4）的确定性事件源。
+- **已收场**：关掉的会话也能看到最后一次目标状态（只读复算持久化日志，不唤醒会话、不写盘）。
 - **能力自检**：页脚常驻 版本号 + 宿主接口状态；某项服务缺失时显示「N 项不可用」，点开可看到具体缺哪个，
   避免把「宿主没提供」误读成「没有东西在跑」。
 - **面板内键盘**：`↑↓` / `j k` 移动，「Enter」打开会话，「Esc」取消；只在面板获得焦点时生效，不劫持输入框。
@@ -136,7 +138,8 @@ node --check index.js && node --check client.js
 node test/smoke.mjs   # 21 条：快照投影、过滤、计数、排序、动作分发、全服务缺失降级
 node test/route.mjs   # 9 条：方法门、同源门、body 门、405 Allow
 node test/wiring.mjs  # 14 条：客户端模块装配（tab 类型 + 三个 seat + 渲染边界）
-node test/render.mjs  # 22 条：用玩具 React 整棵渲染（有数据 + 空态），抓渲染期崩溃
+node test/closed.mjs  # 15 条：已关闭会话的目标复算（事件折叠 + 缓存 + live 跳过）
+node test/render.mjs  # 27 条：用玩具 React 整棵渲染（有数据 + 空态），抓渲染期崩溃
 ```
 
 `index.js` 的 `__internal` 只服务这两个离线测试，不参与宿主装配。

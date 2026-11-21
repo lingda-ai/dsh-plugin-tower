@@ -54,6 +54,34 @@ const fakeCtx = {
       }
     }
     if (name === 'schedule') return { catalog: async () => [], run: async () => ({ id: 'x' }) }
+    if (name === 'sessionPersistence') {
+      return {
+        list: async () => [
+          { header: { id: 'session-closed', createdAt: now - 1000, cwd: '/tmp/projects/closed-demo' }, revision: 'rev-c1' },
+          { header: { id: 'session-a', createdAt: now, cwd: '/tmp/demo' }, revision: 'rev-live' },
+        ],
+        open: async () => ({
+          read: async () => ({
+            events: [
+              {
+                type: 'goal/change',
+                time: now - 500,
+                data: {
+                  kind: 'goal/change',
+                  version: 1,
+                  operation: 'create',
+                  goal: { id: 'g-old', revision: 1, objective: '旧目标：整理迁移脚本', phase: 'complete', maxGoalRounds: 5 },
+                  roundsStarted: 2,
+                  createdAt: now - 900,
+                  updatedAt: now - 500,
+                },
+              },
+            ],
+          }),
+          close: async () => {},
+        }),
+      }
+    }
     return null
   },
 }
@@ -163,6 +191,13 @@ assert(foreign.body.ok === false, '跨会话读作业被拒')
 
 const emptyJob = await call('GET', '/dsh-tower/api?job=', { host: '127.0.0.1:64700' })
 assert(emptyJob.body.ok === false && emptyJob.body.error === '缺少作业 id', '空作业 id 被显式拒绝')
+
+const closed = await call('GET', '/dsh-tower/api?closed=1&limit=8', { host: '127.0.0.1:64700' })
+assert(closed.status === 200 && closed.body.ok === true, '已收场扫描 200')
+assert(closed.body.closed.length === 1, '只返回已关闭且有目标的会话')
+assert(closed.body.closed[0].sessionId === 'session-closed', '命中已关闭会话')
+assert(closed.body.closed[0].goal.objective.indexOf('旧目标') >= 0, '复算出旧目标原文')
+assert(closed.body.closed[0].goal.roundsStarted === 2, '复算出轮次')
 
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')

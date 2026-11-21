@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.1.6` |
+| 包 | `dsh-plugin-tower@0.2.0` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
-| 模块代（当前） | `dsh-plugin-tower+0.1.6+ffaede5583b8` |
-| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515` |
+| 模块代（当前） | `dsh-plugin-tower+0.2.0+0f0fa40a9051` |
+| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8` |
 | Config schema | 无（本插件不暴露配置项） |
 | 用户补丁层 | **未被修改**（仅经 bundle 通道挂载） |
 
@@ -168,6 +168,43 @@ render 23 条（新增「最近处置」分区）、wiring 14 条、smoke 21 条
 - 已验证：route 23 条（版本号格式、caps 全绿、lean 包同样带 caps）、render 26 条
   （页脚版本号、降级时显示「3 项不可用」），连同 smoke 21 + wiring 14 共 **84 条全 PASS**。
 - **未验证**：页脚降级条在真实缺失场景下的观感（本机六个服务都在，只能靠假快照渲染验证）。
+
+## 7.10 0.2.0 已收场（v0.2「不漏」的目标部分）
+
+实现：`GET /dsh-tower/api?closed=1&limit=8` —— 用 `sessionPersistence.list/open(read)` 只读打开
+**已关闭会话**的持久化日志，按序复算最后一次 `goal/change`，按持久化 `revision` 缓存。
+只在面板展开「已收场」时按需调用，所以 4s 轮询完全不碰磁盘。
+
+事件契约不是猜的，来自 `@deepseek-ai/dsh-goal` 的构建产物（`lib/index.js` 已逐段读过）：
+`goal/change` 的 `operation ∈ create|edit|pause|resume|complete|block|clear`，
+轮次由 `user/message` 的 `source.kind === 'goal'` 推进。
+
+### 真机验证（读链路）
+
+用同代码探针跑真实持久化目录：
+
+| 指标 | 结果 |
+|---|---|
+| 扫描会话 | 8 个（limit 12，实际候选 8） |
+| 读到事件 | **4,668 条**，耗时 **303ms** |
+| `goal/*` 事件 | **0 条**（这台机器从未创建过目标） |
+| 读取错误 | 0 |
+
+扫描中还观测到这些**以前不知道的持久化事件类型**（对下一步有用）：
+`job/registered`、`job/settled`、`permission/preset`、`sandbox/mode`、`approval/policy`、
+`model/selection`、`working-directory/change`、`session-log-deepseek/delivery-accepted`。
+
+### 诚实边界
+
+- **读取链路**（list → open(read) → 遍历 → 缓存）已在真机上验证，4,668 条真实事件。
+- **goal 折叠逻辑**只在合成事件上验证过（`test/closed.mjs` 15 条），因为本机**没有任何真实 goal 事件**。
+  我没有为了验证去 `create_goal` —— 那会给这个会话装上自动续轮，属于用污染用户状态换测试。
+- 因此「已收场」在本机目前会显示「没有带目标的已关闭会话」。这是**正确结果**，不是故障。
+
+### 顺带确认的下一步
+
+`job/registered` / `job/settled` 是**持久化**的 —— 这意味着 v0.2 剩下的「作业 24h 历史」
+不需要新的宿主接口，同样可以从会话日志复算。这是下一版最省力的高价值项。
 
 ## 8. 你现在需要做的事
 

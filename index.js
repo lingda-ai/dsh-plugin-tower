@@ -33,6 +33,10 @@ const MAX_TAIL_BYTES = 8000
  * 内存 ring：重启即清空——所以 UI 上必须写「本次运行内」，不能伪装成审计日志。
  * 它是 L4 审计层的第一步：事件源已经存在，后续只需落盘 + 哈希链。
  */
+/** 已收场会话：一次最多扫描 8 个、缓存按持久化 revision 失效。 */
+const CLOSED_LIMIT = 8
+const closedCache = new Map()
+
 const ACTION_HISTORY_LIMIT = 30
 const actionHistory = []
 
@@ -63,6 +67,124 @@ function service(ctx, name) {
   }
 }
 
+/**
+ * 从一条会话事件流里复算「最后一个目标」。
+ *
+ * 事件契约来自 @deepseek-ai/dsh-goal 的构建产物（已读源码核实）：
+ *   - `goal/change`：{ kind:'goal/change', version:1, operation, goal, roundsStarted, createdAt, updatedAt }
+ *     其中 operation ∈ create|edit|pause|resume|complete|block，clear 时是 { cleared, clearedAt }
+ *   - `user/message` 且 `data.source.kind === 'goal'`：轮次推进（source.round）
+ *
+ * 这里只做「按序取最后一次」的宽松折叠，不重放宿主的严格校验：
+ * 持久化日志由宿主自己写入，合法日志在两种折叠下结果一致；非法日志我们宁可不显示也不猜。
+ */
+function readGoalFromEvents(events) {
+  let goal = null
+  let roundsStarted = 0
+  let updatedAt = 0
+  for (const event of events) {
+    if (!event || typeof event.type !== 'string') continue
+    if (event.type === 'goal/change') {
+      const data = event.data || {}
+      if (data.operation === 'clear') {
+        goal = null
+        roundsStarted = 0
+        updatedAt = Number(data.clearedAt) || updatedAt
+        continue
+      }
+      if (!data.goal || typeof data.goal !== 'object') continue
+      goal = {
+        id: String(data.goal.id || ''),
+        revision: Number(data.goal.revision) || 0,
+        objective: text(data.goal.objective, 200),
+        phase: String(data.goal.phase || 'active'),
+        maxGoalRounds: Number(data.goal.maxGoalRounds) || 0,
+        blockedMessage: data.goal.blockedReason ? text(data.goal.blockedReason.message, 200) : '',
+      }
+      roundsStarted = Number(data.roundsStarted) || 0
+      updatedAt = Number(data.updatedAt) || updatedAt
+      continue
+    }
+    if (event.type === 'user/message' && event.data && event.data.source && event.data.source.kind === 'goal') {
+      const round = Number(event.data.source.round) || 0
+      if (round > roundsStarted) roundsStarted = round
+      updatedAt = Number(event.time) || updatedAt
+    }
+  }
+  if (goal === null) return null
+  return Object.assign({}, goal, { roundsStarted, updatedAt })
+}
+
+/**
+ * 已关闭会话的最后目标。只读打开持久化日志，不写、不激活、不 resume。
+ * 只在面板展开「已收场」时按需调用，因此 4s 轮询完全不碰磁盘。
+ */
+async function collectClosedGoals(ctx, limit) {
+  const persistence = service(ctx, 'sessionPersistence')
+  if (
+    !persistence ||
+    typeof persistence.list !== 'function' ||
+    typeof persistence.open !== 'function'
+  ) {
+    return { ok: false, error: '会话持久化服务不可用' }
+  }
+  const agentsSvc = service(ctx, 'agents')
+  const liveIds = new Set(
+    (attempt(() => (typeof agentsSvc?.list === 'function' ? agentsSvc.list() : []), []) || []).map((agent) =>
+      String(agent && agent.id ? agent.id : ''),
+    ),
+  )
+  const snaps = await persistence.list()
+  if (!Array.isArray(snaps)) return { ok: false, error: '会话列表不可用' }
+  const want = Math.max(1, Math.min(CLOSED_LIMIT, Number(limit) || CLOSED_LIMIT))
+  const candidates = snaps
+    .filter((snap) => snap && snap.header && !liveIds.has(String(snap.header.id)))
+    .sort((a, b) => (Number(b.header.createdAt) || 0) - (Number(a.header.createdAt) || 0))
+    .slice(0, want)
+
+  const rows = []
+  for (const snap of candidates) {
+    const id = String(snap.header.id)
+    const revision = String(snap.revision)
+    const cached = closedCache.get(id)
+    if (cached && cached.revision === revision) {
+      if (cached.row && cached.row.goal) rows.push(cached.row)
+      continue
+    }
+    let row = null
+    try {
+      const handle = await persistence.open(snap.header.id, 'read')
+      try {
+        const read = await handle.read()
+        const events = read && Array.isArray(read.events) ? read.events : []
+        row = {
+          sessionId: id,
+          cwdName: baseName(snap.header.cwd) || '未命名工作区',
+          createdAt: Number(snap.header.createdAt) || 0,
+          eventCount: events.length,
+          goal: readGoalFromEvents(events),
+        }
+      } finally {
+        if (handle && typeof handle.close === 'function') await handle.close()
+      }
+    } catch (error) {
+      row = {
+        sessionId: id,
+        cwdName: baseName(snap.header.cwd) || '未命名工作区',
+        createdAt: Number(snap.header.createdAt) || 0,
+        eventCount: 0,
+        goal: null,
+        error: String(error && error.message ? error.message : error),
+      }
+    }
+    if (closedCache.size > 200) closedCache.clear()
+    closedCache.set(id, { revision, row })
+    // 读失败也返回：否则「读不出来」会被伪装成「没有目标」
+    if (row && (row.goal || row.error)) rows.push(row)
+  }
+  return { ok: true, closed: rows, scanned: candidates.length }
+}
+
 /** 某个可选服务是否具备全部所需方法（用来区分「本来就没有」和「有了但变了」）。 */
 function hasMethods(ctx, name, methods) {
   const svc = service(ctx, name)
@@ -83,6 +205,7 @@ function collectCapabilities(ctx) {
     log: hasMethods(ctx, 'jobs', ['get', 'readAt']),
     schedule: hasMethods(ctx, 'schedule', ['catalog']),
     sessions: hasMethods(ctx, 'sessions', ['get']),
+    history: hasMethods(ctx, 'sessionPersistence', ['list', 'open']),
   }
 }
 
@@ -529,6 +652,10 @@ async function handleRequest(ctx, req, res) {
         )
         return
       }
+      if (url.searchParams.has('closed')) {
+        sendJson(res, 200, await collectClosedGoals(ctx, url.searchParams.get('limit')))
+        return
+      }
       const lean = url.searchParams.get('counts') === '1'
       sendJson(res, 200, await buildSnapshot(ctx, { lean }))
     } catch (error) {
@@ -573,4 +700,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals }
