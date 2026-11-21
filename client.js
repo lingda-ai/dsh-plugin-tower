@@ -124,6 +124,14 @@ window.__ModuleLoader__.load({
         'flight.noGoalChip': '无目标',
         'act.newGoal': '建目标',
         'hint.keys': '↑↓ 或 j/k 选择 · Enter 打开',
+        'act.notify': '通知',
+        'act.notifyOn': '通知已开',
+        'notify.unsupported': '当前环境不支持系统通知',
+        'notify.blocked': '通知权限被拒绝（可在浏览器站点设置里改）',
+        'notify.enableTitle': '塔台已开始值守',
+        'notify.enableBody': '目标受阻或作业失败时，我会在这里提醒你。',
+        'notify.title': '塔台 · {what}',
+        'notify.body': '{where}：{detail}',
         'hint.copied': '已复制',
         'act.open': '打开会话',
         'act.pause': '暂停',
@@ -241,6 +249,14 @@ window.__ModuleLoader__.load({
         'flight.noGoalChip': 'no goal',
         'act.newGoal': 'New goal',
         'hint.keys': '↑↓ or j/k to move · Enter to open',
+        'act.notify': 'Notify',
+        'act.notifyOn': 'Notify on',
+        'notify.unsupported': 'System notifications are unavailable here',
+        'notify.blocked': 'Notification permission denied (change it in site settings)',
+        'notify.enableTitle': 'Tower is on watch',
+        'notify.enableBody': 'I will ping you here when a goal is blocked or a job fails.',
+        'notify.title': 'Tower · {what}',
+        'notify.body': '{where}: {detail}',
         'hint.copied': 'copied',
         'act.open': 'Open session',
         'act.pause': 'Pause',
@@ -614,6 +630,77 @@ window.__ModuleLoader__.load({
     }
     // #endregion
 
+    // #region notifications
+    const NOTIFY_KEY = 'dsh-tower.notify.v1'
+    const NOTIFIED_KEY = 'dsh-tower.notified.v1'
+    const NOTIFY_WINDOW_MS = 6 * 60 * 60 * 1000
+    /** 同一 tick 内多个组件（入口/面板）同时刷新时，防止重复弹。 */
+    const notifiedNow = new Set()
+
+    function readNotifyOn() {
+      try {
+        return window.localStorage.getItem(NOTIFY_KEY) === 'on'
+      } catch {
+        return false
+      }
+    }
+
+    function writeNotifyOn(on) {
+      try {
+        window.localStorage.setItem(NOTIFY_KEY, on ? 'on' : 'off')
+      } catch {
+        /* 不持久也不影响本轮 */
+      }
+    }
+
+    function announceNotifyChange() {
+      try {
+        window.dispatchEvent(new Event('dsh-tower:notify'))
+      } catch {
+        /* 事件不可用就只影响跨组件同步 */
+      }
+    }
+
+    function readNotified() {
+      try {
+        const raw = window.localStorage.getItem(NOTIFIED_KEY)
+        const parsed = raw ? JSON.parse(raw) : null
+        return parsed && typeof parsed === 'object' ? parsed : {}
+      } catch {
+        return {}
+      }
+    }
+
+    function writeNotified(map) {
+      try {
+        const now = Date.now()
+        const pruned = {}
+        for (const key of Object.keys(map)) {
+          if (now - (Number(map[key]) || 0) < NOTIFY_WINDOW_MS) pruned[key] = map[key]
+        }
+        window.localStorage.setItem(NOTIFIED_KEY, JSON.stringify(pruned))
+      } catch {
+        /* 同上 */
+      }
+    }
+
+    /**
+     * 哪些待处置项值得弹通知：只弹 urgent、6 小时内同一个 key 只弹一次。
+     * 纯函数，便于离线断言（真机弹窗无法在无浏览器环境下验证）。
+     */
+    function notificationCandidates(attention, seen, now) {
+      const out = []
+      for (const item of attention || []) {
+        if (!item || item.level !== 'urgent') continue
+        const key = [item.code, item.sessionId, item.jobId || ''].join(':')
+        const at = Number(seen && seen[key]) || 0
+        if (at > 0 && now - at < NOTIFY_WINDOW_MS) continue
+        out.push({ key, item })
+      }
+      return out
+    }
+    // #endregion
+
     // #region atoms
     function Glyph(props) {
       const size = props && props.size ? props.size : 14
@@ -911,19 +998,7 @@ window.__ModuleLoader__.load({
       }
 
       function openSession(sessionId) {
-        const uiWorkspace = getService(ctx, 'uiWorkspace')
-        if (typeof uiWorkspace?.openSession !== 'function') return
-        try {
-          uiWorkspace.openSession(sessionId)
-          return
-        } catch {
-          /* 兼容按对象寻址的形态 */
-        }
-        try {
-          uiWorkspace.openSession({ kind: 'id', id: sessionId })
-        } catch {
-          /* 打不开会话不影响面板 */
-        }
+        openSessionById(ctx, sessionId)
       }
 
       function GoalLine(props) {
@@ -1198,6 +1273,8 @@ window.__ModuleLoader__.load({
         const [cursor, setCursor] = React.useState(-1)
         const [capsOpen, setCapsOpen] = React.useState(false)
         const [closed, setClosed] = React.useState({ loading: false, rows: [], error: '', loaded: false })
+        const [notifyOn, setNotifyOn] = React.useState(readNotifyOn)
+        const [notifyNote, setNotifyNote] = React.useState('')
         const [history, setHistory] = React.useState({ loading: false, rows: [], error: '', loaded: false, total: 0, scanned: 0 })
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
@@ -1312,6 +1389,50 @@ window.__ModuleLoader__.load({
           const next = Object.assign({}, sections, { [key]: !sectionOpen(key, autoValue) })
           setSections(next)
           writeSections(next)
+        }
+
+        React.useEffect(() => {
+          const sync = () => setNotifyOn(readNotifyOn())
+          window.addEventListener('dsh-tower:notify', sync)
+          window.addEventListener('storage', sync)
+          return () => {
+            window.removeEventListener('dsh-tower:notify', sync)
+            window.removeEventListener('storage', sync)
+          }
+        }, [])
+
+        async function toggleNotify() {
+          setNotifyNote('')
+          if (notifyOn) {
+            writeNotifyOn(false)
+            setNotifyOn(false)
+            announceNotifyChange()
+            return
+          }
+          if (typeof Notification === 'undefined') {
+            setNotifyNote(t('notify.unsupported'))
+            return
+          }
+          let permission = Notification.permission
+          if (permission === 'default') {
+            try {
+              permission = await Notification.requestPermission()
+            } catch {
+              permission = 'denied'
+            }
+          }
+          if (permission !== 'granted') {
+            setNotifyNote(t('notify.blocked'))
+            return
+          }
+          writeNotifyOn(true)
+          setNotifyOn(true)
+          announceNotifyChange()
+          try {
+            new Notification(t('notify.enableTitle'), { body: t('notify.enableBody'), tag: 'dsh-tower:enabled' })
+          } catch {
+            /* 权限刚授予也可能失败：不影响面板 */
+          }
         }
 
         function toggleDensity() {
@@ -1484,6 +1605,17 @@ window.__ModuleLoader__.load({
               h('span', { style: { fontWeight: 600, fontSize: 12.5 } }, t('title')),
               h('span', { style: { color: T.faint, fontSize: 10 } }, t('head.sub')),
               h('span', { style: { flex: 1 } }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'twr-btn twr-btn--ghost twr-mini',
+                  title: notifyOn ? t('act.notifyOn') : t('act.notify'),
+                  style: notifyOn ? { color: T.ok } : undefined,
+                  onClick: toggleNotify,
+                },
+                notifyOn ? t('act.notifyOn') : t('act.notify'),
+              ),
               h(
                 'button',
                 {
@@ -2094,8 +2226,8 @@ window.__ModuleLoader__.load({
               },
               h(
                 'span',
-                { className: 'twr-ellipsis', style: { flex: 1 } },
-                (snapshot.version ? 'v' + snapshot.version + ' · ' : '') + t('foot.note'),
+                { className: 'twr-ellipsis', style: { flex: 1, color: notifyNote ? T.warn : T.faint } },
+                notifyNote || (snapshot.version ? 'v' + snapshot.version + ' · ' : '') + t('foot.note'),
               ),
               degraded
                 ? h(
@@ -2211,12 +2343,56 @@ window.__ModuleLoader__.load({
     }
 
     /** 输入框工具栏入口：常驻入口 + 待处置角标。 */
-    function makeEntry(t, store, openPanel) {
+    function makeEntry(t, store, openPanel, ctx) {
       return function TowerEntryButton() {
         const [snapshot, setSnapshot] = React.useState(store.get())
+        const [notifyOn, setNotifyOn] = React.useState(readNotifyOn)
+
         React.useEffect(() => {
-          return store.subscribe(() => setSnapshot(store.get()))
+          const sync = () => setNotifyOn(readNotifyOn())
+          const unsubscribe = store.subscribe(() => setSnapshot(store.get()))
+          window.addEventListener('dsh-tower:notify', sync)
+          window.addEventListener('storage', sync)
+          return () => {
+            unsubscribe()
+            window.removeEventListener('dsh-tower:notify', sync)
+            window.removeEventListener('storage', sync)
+          }
         }, [])
+
+        // 通知引擎：入口按钮常驻，因此面板关着也能提醒。
+        React.useEffect(() => {
+          if (!notifyOn) return
+          if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+          if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && document.hasFocus()) return
+          const seen = readNotified()
+          const fresh = notificationCandidates(snapshot.attention, seen, Date.now())
+          if (fresh.length === 0) return
+          for (const row of fresh) {
+            if (notifiedNow.has(row.key)) continue
+            try {
+              const note = new Notification(t('notify.title', { what: row.item.title || row.item.code }), {
+                body: t('notify.body', { where: row.item.label || '', detail: row.item.detail || '' }),
+                tag: 'dsh-tower:' + row.key,
+              })
+              note.onclick = () => {
+                try {
+                  window.focus()
+                } catch {
+                  /* 聚焦失败不阻塞跳转 */
+                }
+                openPanel()
+                openSessionById(ctx, row.item.sessionId)
+              }
+              notifiedNow.add(row.key)
+              seen[row.key] = Date.now()
+            } catch {
+              /* 弹窗失败不影响面板 */
+            }
+          }
+          writeNotified(seen)
+        }, [snapshot, notifyOn])
+
         const urgent = snapshot.counts.urgent || 0
         const live = snapshot.counts.live || 0
         const hint = t('entry.label') + (urgent > 0 ? ' · ' + t('strip.urgent') + ' ' + urgent : ' · ' + live)
@@ -2238,6 +2414,23 @@ window.__ModuleLoader__.load({
             urgent > 0 ? h('span', { className: 'twr-entry__badge' }, String(urgent)) : null,
           ),
         )
+      }
+    }
+
+    /** 按会话 id 打开会话：已核实形态是裸字符串（见 dsh-better-sidebar 调用点）。 */
+    function openSessionById(ctx, sessionId) {
+      const uiWorkspace = getService(ctx, 'uiWorkspace')
+      if (typeof uiWorkspace?.openSession !== 'function') return
+      try {
+        uiWorkspace.openSession(sessionId)
+        return
+      } catch {
+        /* 兼容按对象寻址的形态 */
+      }
+      try {
+        uiWorkspace.openSession({ kind: 'id', id: sessionId })
+      } catch {
+        /* 打不开会话不影响面板 */
       }
     }
 
@@ -2327,7 +2520,7 @@ window.__ModuleLoader__.load({
           disposeEntry = slots.inject('conversation.input.right', () =>
             slots.register(
               { name: 'conversation.input.right', id: 'dsh-tower-entry', order: 40 },
-              makeEntry(t, store, openPanel),
+              makeEntry(t, store, openPanel, ctx),
             ),
           )
         } catch (error) {
@@ -2352,7 +2545,7 @@ window.__ModuleLoader__.load({
       inject: ['sidebarRightTabs'],
       apply,
       // 仅供离线测试使用：不参与宿主装配。
-      __test: { makePanel, makeTitle, makeEntry, makeT, createStore },
+      __test: { makePanel, makeTitle, makeEntry, makeT, createStore, notificationCandidates },
     }
   },
 })

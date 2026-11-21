@@ -41,6 +41,9 @@ const closedCache = new Map()
 const HISTORY_LIMIT = 20
 const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000
 const HISTORY_SCAN_SESSIONS = 12
+
+/** 「有目标在跑、但这么久没有事件」→ 视为可能空转。20 分钟是保守值。 */
+const IDLE_MS = 20 * 60 * 1000
 const historyCache = new Map()
 
 const ACTION_HISTORY_LIMIT = 30
@@ -425,6 +428,14 @@ function collectFlights(ctx, now) {
     const cwd = header && typeof header.cwd === 'string' ? header.cwd : ''
     const running = Boolean(boundary && boundary.openTurnStartSeq !== null && boundary.openTurnStartSeq !== undefined)
 
+    // 最后一次提交事件的时间：由 turnBoundary 指向的 seq 反查，比 goal.updatedAt 更贴近「有没有动静」。
+    let lastEventAt = 0
+    if (session && boundary && boundary.lastStepBoundary && boundary.lastStepBoundary.seq !== undefined) {
+      const event = attempt(() => session.eventAt(boundary.lastStepBoundary.seq), null)
+      lastEventAt = Number(event && event.time) || 0
+    }
+    if (lastEventAt === 0 && goal) lastEventAt = goal.updatedAt || 0
+
     flights.push({
       sessionId,
       short: shortId(sessionId),
@@ -436,6 +447,7 @@ function collectFlights(ctx, now) {
       createdAt: header ? Number(header.createdAt) || 0 : 0,
       turn: boundary ? Number(boundary.lastTurn) || 0 : 0,
       running,
+      lastEventAt,
       goal,
       jobs,
     })
@@ -477,6 +489,20 @@ function collectAttention(flights, now) {
         detail: flight.goal.objective,
         at: flight.goal.updatedAt || now,
       })
+    }
+    if (flight.goal && flight.goal.phase === 'active' && !flight.running && flight.lastEventAt) {
+      const idleMs = now - flight.lastEventAt
+      if (idleMs > IDLE_MS) {
+        items.push({
+          level: 'waiting',
+          code: 'goal.idle',
+          sessionId: flight.sessionId,
+          label: flight.cwdName,
+          title: '目标在推进，但已经有 ' + Math.round(idleMs / 60000) + ' 分钟没有动静',
+          detail: flight.goal.objective,
+          at: flight.lastEventAt,
+        })
+      }
     }
     for (const job of flight.jobs) {
       if (job.status !== 'failed') continue
@@ -808,4 +834,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS }

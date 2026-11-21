@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.2.1` |
+| 包 | `dsh-plugin-tower@0.3.0` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
-| 模块代（当前） | `dsh-plugin-tower+0.2.1+50b17b476bed` |
-| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051` |
+| 模块代（当前） | `dsh-plugin-tower+0.3.0+191fc799cf0c` |
+| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed` |
 | Config schema | 无（本插件不暴露配置项） |
 | 用户补丁层 | **未被修改**（仅经 bundle 通道挂载） |
 
@@ -242,6 +242,29 @@ job/settled    { …同上…, finishedAt, status:'completed'|'killed'|'failed',
 - 只覆盖最近 12 个会话（按 createdAt 倒序）—— 更早的会话不在窗口内，这是刻意的成本取舍。
 - 只列**已收口**的作业；正在跑的仍在「后台作业」区（实时数据）。
 - `cause` / `producerReported` 字段已取到但暂不展示（先不增加噪音）。
+
+## 7.12 0.3.0 静默检测 + 本地通知
+
+### 静默检测（Host，可测）
+
+规则：`goal.phase === 'active'`、当前没在跑、且 `lastEventAt` 距今 > **20 分钟** → 一条 `goal.idle`（waiting 级）。
+
+`lastEventAt` 由 `agents.turnBoundaryOf(session).lastStepBoundary.seq` 反查 `session.eventAt(seq).time`，
+比 `goal.updatedAt`（只在目标变更时更新）更接近「有没有动静」。
+
+已验证：`test/idle.mjs` 8 条 —— 25 分钟无动静会报、1 分钟前有动静不报、正在跑不报、
+已暂停不报（paused 自己会报）、阈值确为 20 分钟。
+
+### 本地通知（Client，**无法在此环境验证**）
+
+- 头部「通知」开关：点击 → `Notification.requestPermission()` → 授予后写本地偏好并**立即发一条确认通知**。
+- 只在**窗口不在前台**（`document.hasFocus() === false`）时弹；只弹 `urgent`；同一 key 6 小时内不重复
+  （`localStorage` 记录，跨刷新有效）。
+- 点击通知：`window.focus()` + 打开右侧栏 + 跳到对应会话。
+- 权限被拒/环境不支持时，页脚用琥珀色文字说明原因，而不是静默失败。
+
+**能验证的**：候选筛选逻辑（`test/notify.mjs` 7 条）与渲染（render 30 条）。 
+**不能验证的**：真实弹窗、系统权限弹框、点击通知的聚焦行为 —— 需要你在真实窗口里点一次。
 
 ## 8. 你现在需要做的事
 
