@@ -226,6 +226,14 @@ assert(history.body.jobs[0].jobId === 'bash-h1' && history.body.jobs[0].status =
 assert(history.body.jobs[0].durationMs === 2000, '持续时间复算正确')
 assert(history.body.jobs[0].cwdName === 'closed-demo', '带会话目录名')
 
+const audit = await call('GET', '/dsh-tower/api?audit=1', { host: '127.0.0.1:64700' })
+assert(audit.status === 200 && audit.body.ok === true, '审计状态 200')
+assert(typeof audit.body.status.enabled === 'boolean' && typeof audit.body.status.count === 'number', '审计状态形状正确')
+assert(typeof audit.body.status.path === 'string' && audit.body.status.path.indexOf('tower') >= 0, '审计路径指向 tower 目录')
+
+const auditVerify = await call('GET', '/dsh-tower/api?audit=1&verify=1', { host: '127.0.0.1:64700' })
+assert(auditVerify.body.ok === true && typeof auditVerify.body.verify.ok === 'boolean', '校验端点返回链状态')
+
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')
 

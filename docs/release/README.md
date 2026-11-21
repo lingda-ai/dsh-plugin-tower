@@ -20,7 +20,7 @@
 | P2 | 仓库可见性改为**公开** | ⬜ | 目录收录与外部安装都要求公开；改完把 README 里的安装行补上 |
 | P3 | GitHub 镜像仓 | ⬜ | **better-sidebar 目录只收 GitHub URL**；缺它进不了默认组合 |
 | P4 | npm 发布 `dsh-plugin-tower` | ⬜ | 名字已查：**未被占用**（registry 404）。标准安装路径是 npm，Git URL 安装对普通用户是门槛 |
-| P5 | 打 tag `v0.3.0` + Release 说明 | ⬜ | 版本号已升到 0.1.1（空态与信息密度改进） |
+| P5 | 打 tag `v0.4.0` + Release 说明 | ⬜ | 版本号已升到 0.1.1（空态与信息密度改进） |
 
 > P3 没有 GitHub 账号也能先做 P4；两者都不阻塞 P5。
 
@@ -42,10 +42,10 @@ DSH 右侧栏 Agent 运行值守台：跨会话看清谁在飞、谁卡住、谁
 dsh  deepseek-harness  dsh-plugin  dsh-better-sidebar  agent  agent-observability  goal  sidebar
 ```
 
-**Release v0.3.0 说明**
+**Release v0.4.0 说明**
 
 ```
-## 塔台 v0.3.0
+## 塔台 v0.4.0
 
 首个公开版本：右侧栏「全机运行值守」。
 
@@ -124,13 +124,27 @@ dsh plugin --profile <profile> add dsh-plugin-tower
 
 ---
 
+## 3.5 npm 发布现状（2026-11-21）
+
+- `npm publish` 已通过（0.3.0 / 0.3.1 / 0.4.0 均被接受），但 registry 的 **tarball 传播很慢**：
+  版本元数据先出现，`/-/dsh-plugin-tower-x.y.z.tgz` 仍可能 404 数分钟到数十分钟。
+- `dist-tags.latest` 也会滞后；用 `npm dist-tag add dsh-plugin-tower@<version> latest` 显式指定。
+- **已知坑**：直接用 API `PUT _attachments` 发布会产生「有元数据、无 tarball」的版本（0.3.0 即如此）。
+  **一律用 npm CLI 发布**，不要手写 PUT。
+- 校验发布是否真的可用（不要只看 `npm view`）：
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    https://registry.npmjs.org/dsh-plugin-tower/-/dsh-plugin-tower-<version>.tgz   # 期望 200
+  ```
+
 ## 4. 发布前自检（贴进 Release）
 
 - [ ] `node test/smoke.mjs` 21 条 PASS
-- [ ] `node test/route.mjs` 33 条 PASS
+- [ ] `node test/route.mjs` 37 条 PASS
 - [ ] `node test/closed.mjs` 15 条 PASS
 - [ ] `node test/wiring.mjs` 14 条 PASS
-- [ ] `node test/render.mjs` 30 条 PASS
+- [ ] `node test/render.mjs` 31 条 PASS
+- [ ] `node test/audit.mjs` 12 条 PASS
 - [ ] `node test/idle.mjs` 8 条 PASS
 - [ ] `node test/notify.mjs` 7 条 PASS
 - [ ] `node test/history.mjs` 14 条 PASS

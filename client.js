@@ -56,6 +56,18 @@ window.__ModuleLoader__.load({
         'cap.log': '作业日志',
         'cap.schedule': '定时',
         'cap.sessions': '会话',
+        'section.audit': '审计',
+        'audit.on': '记录中',
+        'audit.off': '未开启',
+        'audit.enable': '开始记录',
+        'audit.disable': '停止记录',
+        'audit.export': '导出',
+        'audit.verify': '校验',
+        'audit.ok': '链完整 · {n} 条',
+        'audit.broken': '校验失败 · 第 {n} 条（{why}）',
+        'audit.count': '{n} 条',
+        'audit.note': '本地 JSONL · 默认关闭 · 每条带前一条哈希',
+        'audit.failed': '读取失败',
         'section.history': '作业历史',
         'history.loading': '读取已收口作业…',
         'history.empty': '最近 24 小时没有已收口的作业',
@@ -181,6 +193,18 @@ window.__ModuleLoader__.load({
         'cap.log': 'Job log',
         'cap.schedule': 'Schedules',
         'cap.sessions': 'Sessions',
+        'section.audit': 'Audit',
+        'audit.on': 'recording',
+        'audit.off': 'off',
+        'audit.enable': 'Start recording',
+        'audit.disable': 'Stop recording',
+        'audit.export': 'Export',
+        'audit.verify': 'Verify',
+        'audit.ok': 'chain intact · {n} records',
+        'audit.broken': 'verification failed · record {n} ({why})',
+        'audit.count': '{n} records',
+        'audit.note': 'local JSONL · off by default · each record carries the previous hash',
+        'audit.failed': 'read failed',
         'section.history': 'Job history',
         'history.loading': 'reading settled jobs…',
         'history.empty': 'no settled job in the last 24h',
@@ -1276,6 +1300,15 @@ window.__ModuleLoader__.load({
         const [notifyOn, setNotifyOn] = React.useState(readNotifyOn)
         const [notifyNote, setNotifyNote] = React.useState('')
         const [history, setHistory] = React.useState({ loading: false, rows: [], error: '', loaded: false, total: 0, scanned: 0 })
+        const [audit, setAudit] = React.useState({
+          loading: false,
+          loaded: false,
+          enabled: false,
+          count: 0,
+          path: '',
+          verify: null,
+          error: '',
+        })
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1449,6 +1482,70 @@ window.__ModuleLoader__.load({
         const schedulesExpanded = sectionOpen('schedules', schedules.length > 0)
         const recent = snapshot.recent || []
         const historyExpanded = sectionOpen('history', false)
+        const auditExpanded = sectionOpen('audit', false)
+
+        const loadAudit = React.useCallback(async (withVerify) => {
+          setAudit((prev) => Object.assign({}, prev, { loading: true, error: '' }))
+          try {
+            const suffix = withVerify ? '?audit=1&verify=1' : '?audit=1'
+            const response = await fetch(API + suffix, { cache: 'no-store', headers: { accept: 'application/json' } })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            setAudit({
+              loading: false,
+              loaded: true,
+              enabled: Boolean(data.status && data.status.enabled),
+              count: Number(data.status && data.status.count) || 0,
+              path: String((data.status && data.status.path) || ''),
+              verify: data.verify || null,
+              error: '',
+            })
+          } catch (error) {
+            setAudit((prev) => Object.assign({}, prev, { loading: false, loaded: true, error: String(error && error.message ? error.message : error) }))
+          }
+        }, [])
+
+        async function toggleAudit() {
+          setAudit((prev) => Object.assign({}, prev, { loading: true, error: '' }))
+          try {
+            const response = await fetch(API, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: audit.enabled ? 'audit.disable' : 'audit.enable' }),
+            })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            const status = data.result || {}
+            setAudit({
+              loading: false,
+              loaded: true,
+              enabled: Boolean(status.enabled),
+              count: Number(status.count) || 0,
+              path: String(status.path || ''),
+              verify: null,
+              error: '',
+            })
+          } catch (error) {
+            setAudit((prev) => Object.assign({}, prev, { loading: false, error: String(error && error.message ? error.message : error) }))
+          }
+        }
+
+        function exportAudit() {
+          try {
+            const link = document.createElement('a')
+            link.href = API + '?audit=1&download=1'
+            link.download = 'tower-audit.jsonl'
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+          } catch {
+            /* 下载失败不影响面板 */
+          }
+        }
+
+        React.useEffect(() => {
+          if (auditExpanded && !audit.loaded && !audit.loading) loadAudit(false)
+        }, [auditExpanded, audit.loaded, audit.loading, loadAudit])
         const closedExpanded = sectionOpen('closed', false)
 
         const loadHistory = React.useCallback(async () => {
@@ -1964,6 +2061,64 @@ window.__ModuleLoader__.load({
                       )
                     : null,
               ),
+            ),
+
+            // ④.5 审计（L4 起点：本地哈希链，默认关闭）
+            h(
+              Section,
+              {
+                title: t('section.audit'),
+                count: audit.enabled ? audit.count : 0,
+                kind: 'attention',
+                trailing: h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'twr-plus',
+                    title: auditExpanded ? t('act.collapse') : t('act.expand'),
+                    onClick: () => toggleSection('audit', false),
+                  },
+                  auditExpanded ? '−' : '+',
+                ),
+              },
+              auditExpanded
+                ? audit.loading && !audit.loaded
+                  ? h('div', { style: { padding: '2px 0' } }, h(Skeleton, null))
+                  : h(
+                      'div',
+                      { style: { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 } },
+                      h(
+                        'div',
+                        { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, minWidth: 0 } },
+                        h(Chip, { color: audit.enabled ? T.ok : T.idle }, audit.enabled ? t('audit.on') : t('audit.off')),
+                        h('span', { className: 'twr-num', style: { color: T.faint } }, t('audit.count', { n: audit.count })),
+                        h('span', { style: { flex: 1 } }),
+                        h(Button, { tone: audit.enabled ? 'danger' : 'accent', onClick: toggleAudit }, audit.enabled ? t('audit.disable') : t('audit.enable')),
+                        h(Button, { tone: 'ghost', disabled: audit.count === 0, onClick: exportAudit }, t('audit.export')),
+                        h(Button, { tone: 'ghost', disabled: audit.count === 0, onClick: () => loadAudit(true) }, t('audit.verify')),
+                      ),
+                      audit.verify
+                        ? h(
+                            'div',
+                            {
+                              style: {
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                                color: audit.verify.ok ? T.ok : T.bad,
+                              },
+                            },
+                            audit.verify.ok
+                              ? t('audit.ok', { n: audit.verify.count })
+                              : t('audit.broken', { n: audit.verify.at, why: audit.verify.reason }),
+                          )
+                        : null,
+                      audit.error
+                        ? h('div', { style: { fontSize: 10, color: T.bad } }, t('audit.failed') + '：' + audit.error)
+                        : null,
+                      h('div', { style: { fontSize: 9, color: T.faint, wordBreak: 'break-all' } }, audit.path || ''),
+                      h('div', { style: { fontSize: 9.5, color: T.faint, lineHeight: 1.5 } }, t('audit.note')),
+                    )
+                : null,
             ),
 
             // ⑤ 作业历史（持久化日志复算，最近 24h）

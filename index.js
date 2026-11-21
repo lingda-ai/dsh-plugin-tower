@@ -13,6 +13,10 @@
  */
 
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
+import { mkdirSync, appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 
 const API_PREFIX = '/dsh-tower/api'
 
@@ -51,6 +55,7 @@ const actionHistory = []
 
 function recordAction(entry) {
   actionHistory.push(entry)
+  appendAudit(entry)
   if (actionHistory.length > ACTION_HISTORY_LIMIT) {
     actionHistory.splice(0, actionHistory.length - ACTION_HISTORY_LIMIT)
   }
@@ -291,6 +296,135 @@ async function collectJobHistory(ctx, limit, windowMs) {
     failed: failed.slice(0, 3),
   }
 }
+
+// #region 审计（L4 起点）
+/**
+ * 本地审计日志：**默认关闭**。开启后把「人点过且成功」的动作追加成 JSONL，
+ * 每条带前一条的 hash（sha256），形成可校验的哈希链。
+ *
+ * 位置：$DSH_HOME/.dsh/tower/（与插件自身状态放一起，不写用户的代码工作区）
+ * 关闭时一行都不写；开启是用户的显式动作，不是默认行为。
+ */
+const AUDIT_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'tower')
+const AUDIT_STATE_FILE = join(AUDIT_DIR, 'audit.json')
+const AUDIT_LOG_FILE = join(AUDIT_DIR, 'audit.jsonl')
+
+let auditHeadCache = null
+
+function readAuditState() {
+  try {
+    const parsed = JSON.parse(readFileSync(AUDIT_STATE_FILE, 'utf8'))
+    return parsed && typeof parsed === 'object' ? parsed : { enabled: false }
+  } catch {
+    return { enabled: false }
+  }
+}
+
+function writeAuditState(state) {
+  try {
+    mkdirSync(AUDIT_DIR, { recursive: true })
+    writeFileSync(AUDIT_STATE_FILE, JSON.stringify(state), { mode: 0o600 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function auditHash(prev, record) {
+  return createHash('sha256')
+    .update([prev, record.seq, record.at, record.verb, record.sessionId, record.label, record.outcome].join('|'))
+    .digest('hex')
+}
+
+function auditHead() {
+  if (auditHeadCache !== null) return auditHeadCache
+  let head = { seq: 0, hash: '' }
+  try {
+    const lines = readFileSync(AUDIT_LOG_FILE, 'utf8').split('\n').filter(Boolean)
+    const last = lines[lines.length - 1]
+    if (last) {
+      const record = JSON.parse(last)
+      head = { seq: Number(record.seq) || lines.length, hash: String(record.hash || '') }
+    }
+  } catch {
+    /* 文件不存在即空链 */
+  }
+  auditHeadCache = head
+  return head
+}
+
+/** 追加一条；未开启时什么都不做（连目录都不建）。 */
+function appendAudit(entry) {
+  if (!readAuditState().enabled) return
+  const head = auditHead()
+  const record = {
+    seq: head.seq + 1,
+    at: Number(entry.at) || Date.now(),
+    verb: String(entry.verb || ''),
+    sessionId: String(entry.sessionId || ''),
+    label: String(entry.label || ''),
+    outcome: String(entry.outcome || 'ok'),
+    prev: head.hash,
+  }
+  record.hash = auditHash(record.prev, record)
+  try {
+    mkdirSync(AUDIT_DIR, { recursive: true })
+    appendFileSync(AUDIT_LOG_FILE, JSON.stringify(record) + '\n', { mode: 0o600 })
+    auditHeadCache = { seq: record.seq, hash: record.hash }
+  } catch {
+    /* 写不下去就保持链头不变，下一次重试 */
+  }
+}
+
+function auditStatus() {
+  const state = readAuditState()
+  let count = 0
+  let head = { seq: 0, hash: '' }
+  try {
+    const lines = readFileSync(AUDIT_LOG_FILE, 'utf8').split('\n').filter(Boolean)
+    count = lines.length
+    if (lines.length > 0) {
+      const last = JSON.parse(lines[lines.length - 1])
+      head = { seq: Number(last.seq) || count, hash: String(last.hash || '') }
+    }
+  } catch {
+    /* 没有日志就是 0 条 */
+  }
+  return { enabled: Boolean(state.enabled), path: AUDIT_LOG_FILE, count, head }
+}
+
+function auditDownload() {
+  try {
+    return readFileSync(AUDIT_LOG_FILE, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** 重算整条链：任何一条被改、被删、被调序都会在这里暴露。 */
+function auditVerify() {
+  let lines = []
+  try {
+    lines = readFileSync(AUDIT_LOG_FILE, 'utf8').split('\n').filter(Boolean)
+  } catch {
+    return { ok: true, count: 0, head: '' }
+  }
+  let prev = ''
+  for (let index = 0; index < lines.length; index += 1) {
+    let record = null
+    try {
+      record = JSON.parse(lines[index])
+    } catch {
+      return { ok: false, at: index + 1, reason: 'json' }
+    }
+    if (Number(record.seq) !== index + 1) return { ok: false, at: index + 1, reason: 'seq' }
+    if (String(record.prev || '') !== prev) return { ok: false, at: index + 1, reason: 'prev' }
+    if (auditHash(prev, record) !== record.hash) return { ok: false, at: index + 1, reason: 'hash' }
+    prev = record.hash
+  }
+  return { ok: true, count: lines.length, head: prev }
+}
+// #endregion
 
 /** 某个可选服务是否具备全部所需方法（用来区分「本来就没有」和「有了但变了」）。 */
 function hasMethods(ctx, name, methods) {
@@ -674,6 +808,14 @@ async function handleAction(ctx, body) {
     }
   }
 
+  if (action === 'audit.enable' || action === 'audit.disable') {
+    const enabled = action === 'audit.enable'
+    const written = writeAuditState({ enabled, updatedAt: Date.now() })
+    if (!written) return { ok: false, error: '无法写入审计目录（权限或路径不可用）' }
+    auditHeadCache = null
+    return { ok: true, result: auditStatus() }
+  }
+
   if (action === 'schedule.run') {
     const scheduleSvc = service(ctx, 'schedule')
     const scheduleId = String(body?.scheduleId ?? '')
@@ -782,6 +924,24 @@ async function handleRequest(ctx, req, res) {
         )
         return
       }
+      if (url.searchParams.has('audit')) {
+        if (url.searchParams.has('download')) {
+          const body = auditDownload()
+          res.writeHead(200, {
+            'content-type': 'application/x-ndjson; charset=utf-8',
+            'content-disposition': 'attachment; filename="tower-audit.jsonl"',
+            'cache-control': 'no-store',
+          })
+          res.end(body)
+          return
+        }
+        if (url.searchParams.has('verify')) {
+          sendJson(res, 200, { ok: true, status: auditStatus(), verify: auditVerify() })
+          return
+        }
+        sendJson(res, 200, { ok: true, status: auditStatus() })
+        return
+      }
       if (url.searchParams.has('history')) {
         sendJson(res, 200, await collectJobHistory(ctx, url.searchParams.get('limit'), url.searchParams.get('window')))
         return
@@ -834,4 +994,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit }

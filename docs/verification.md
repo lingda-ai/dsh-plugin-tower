@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.3.0` |
+| 包 | `dsh-plugin-tower@0.4.0` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
-| 模块代（当前） | `dsh-plugin-tower+0.3.0+191fc799cf0c` |
-| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed` |
+| 模块代（当前） | `dsh-plugin-tower+0.4.0+828a5b0628c3` |
+| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed`、`0.3.0+191fc799cf0c` |
 | Config schema | 无（本插件不暴露配置项） |
 | 用户补丁层 | **未被修改**（仅经 bundle 通道挂载） |
 
@@ -265,6 +265,25 @@ job/settled    { …同上…, finishedAt, status:'completed'|'killed'|'failed',
 
 **能验证的**：候选筛选逻辑（`test/notify.mjs` 7 条）与渲染（render 30 条）。 
 **不能验证的**：真实弹窗、系统权限弹框、点击通知的聚焦行为 —— 需要你在真实窗口里点一次。
+
+## 7.13 0.4.0 审计落盘（L4 首片）
+
+默认**关闭**；开启后把「人点过且成功」的动作追加到本地 JSONL，每条带前一条的 `sha256`，形成哈希链。
+
+- 位置：`$DSH_HOME/.dsh/tower/audit.jsonl` + `audit.json`（只写插件自己的状态目录，不碰用户工作区）
+- 记录：`{ seq, at, verb, sessionId, label, outcome, prev, hash }`
+- `hash = sha256(prev|seq|at|verb|sessionId|label|outcome)`
+- 接口：`?audit=1` 状态 / `?audit=1&verify=1` 重算整条链 / `?audit=1&download=1` 导出 / POST enable|disable
+- 关闭时连目录都不创建（测试断言了这一条）
+
+已验证 `test/audit.mjs` 12 条：
+默认关闭 → 开启 → 写两条 → `prev` 指向正确 → 校验通过 → **改掉第一条的 label 被检出（at=1, reason=hash）**
+→ **删掉首条被检出（at=1, reason=seq）** → 关闭后不再追加。
+
+用临时 `DSH_HOME` 沙箱跑，**不会碰你真实的审计目录**。
+
+诚实边界：这是「可校验」而不是「不可篡改」——文件在本机，有权限的人可以整条重写；
+但重写必然破坏链，`verify` 会点名断点。真正的不可篡改需要外部锚定（时间戳服务/另一台机器），不在本版范围。
 
 ## 8. 你现在需要做的事
 

@@ -74,6 +74,10 @@ Host 半只暴露一个同源前缀路由 `/dsh-tower/api`，无配置项、无�
 | `GET /dsh-tower/api?job=<id>&session=<sid>&tail=4000` | 某条后台作业的输出尾部：只读、不动模型游标，最多 8KB，带 `truncated`/`lossy` 标记 |
 | `GET /dsh-tower/api?closed=1&limit=8` | 已关闭会话的最后目标：只读打开持久化日志复算，不唤醒会话；按持久化 revision 缓存 |
 | `GET /dsh-tower/api?history=1&limit=20&window=86400000` | 跨会话作业历史：从持久化日志配对 `job/registered`/`job/settled`，默认最近 24h、扫描 12 个会话 |
+| `GET /dsh-tower/api?audit=1` | 审计状态（是否开启 / 条数 / 路径 / 链头） |
+| `GET /dsh-tower/api?audit=1&verify=1` | 重算整条哈希链，返回是否被篡改及断点位置 |
+| `GET /dsh-tower/api?audit=1&download=1` | 导出 `tower-audit.jsonl`（附哈希链，可独立校验） |
+| `POST {"action":"audit.enable"\|"audit.disable"}` | 开始/停止本地审计记录（默认关闭） |
 | `POST /dsh-tower/api` | 一个动作，一次一个 |
 
 POST body 与动作：
@@ -105,6 +109,8 @@ POST body 与动作：
 - **已收场**：关掉的会话也能看到最后一次目标状态（只读复算持久化日志，不唤醒会话、不写盘）。
 - **作业历史**：跨会话的「最近 24 小时已收口作业」——重启后仍在，因为它是从持久化日志复算的，不是内存。
 - **静默检测**：目标处于 active、却 20 分钟没有任何提交事件 → 标为「可能空转」（waiting 级，不弹通知）。
+- **审计**：可选开启的本地 `JSONL`（默认关闭），每条记录带前一条的 `sha256`，形成可校验的哈希链；
+  面板内可「导出」和「校验」，篡改/删行会被点名到具体第几条。
 - **本地通知**：头部「通知」开关，授权后只在**窗口不在前台**时弹；urgent 项 6 小时内同一目标只弹一次；
   点击通知会打开右侧栏并跳到对应会话。开启时会先发一条确认通知。
 - **能力自检**：页脚常驻 版本号 + 宿主接口状态；某项服务缺失时显示「N 项不可用」，点开可看到具体缺哪个，
@@ -146,7 +152,8 @@ node test/wiring.mjs  # 14 条：客户端模块装配（tab 类型 + 三个 sea
 node test/closed.mjs  # 15 条
 node test/history.mjs # 14 条：作业历史（事件配对 + 窗口过滤 + 缓存）
 node test/idle.mjs    # 8 条：静默检测（阈值 / 在跑 / 暂停 / 最近有动静）
-node test/notify.mjs  # 7 条：通知候选筛选（只弹 urgent、6h 去重）：已关闭会话的目标复算（事件折叠 + 缓存 + live 跳过）
+node test/notify.mjs  # 7 条：通知候选筛选（只弹 urgent、6h 去重）
+node test/audit.mjs   # 12 条：审计哈希链（追加 / 校验 / 篡改检出 / 关闭停写）：已关闭会话的目标复算（事件折叠 + 缓存 + live 跳过）
 node test/render.mjs  # 28 条：用玩具 React 整棵渲染（有数据 + 空态），抓渲染期崩溃
 ```
 
