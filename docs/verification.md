@@ -112,6 +112,22 @@ node test/route.mjs   → 9 条 PASS
 - **未验证**：新界面的实际观感与布局（无浏览器控制）。这是本轮唯一没有硬证据的部分，
   需要刷新页面后由你肉眼确认；若出现布局问题，渲染边界会给出可读错误而不是白屏。
 
+## 7.6 0.1.3 作业日志尾部（真机已验证）
+
+用一个真的在跑的后台作业（`bash-efdf11432ee54f1a`，40 行 `probe-line-N`）走通了整条读链路：
+
+| 请求 | 结果 |
+|---|---|
+| `?job=bash-efdf11432ee54f1a&session=session-bc835d33-…&tail=300` | `ok`，`total=313`、`from=13`、`truncated=true`，文本尾部为真实的 `probe-line-14: writing` |
+| 同上但 `session=` 换成一个不存在的会话 | `{"ok":false,"error":"job bash-efdf11432ee54f1a belongs to another session"}`（由 jobs registry 自己围栏） |
+| 省略 `session` | 同样被拒（未拥有作业不可读） |
+| `?job=`（空 id） | `{"ok":false,"error":"缺少作业 id"}` |
+
+结论：`jobs.get` + `jobs.readAt` 的 caller 围栏、`from = total - tail` 的截断算法、
+以及「只读不动游标」的语义都与契约一致（实测 `readAt` 不移动模型游标，模型侧读取不受影响）。
+因为新代码需要重启才能加载到主插件，这里同样用**同代码探针**（`/dsh-tower-probe/api`）在真机上验证，
+验证后已移除探针并删除目录。
+
 ## 8. 你现在需要做的事
 
 1. **刷新页面**看 0.1.1 的空态与航班卡信息。

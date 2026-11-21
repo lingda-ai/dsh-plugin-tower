@@ -61,6 +61,10 @@ window.__ModuleLoader__.load({
         'act.snooze': '稍后',
         'act.snoozeHint': '30 分钟内不再提示（只存在本机）',
         'snooze.note': '已稍后 {n}',
+        'job.log': '日志',
+        'job.logEmpty': '（这段没有输出）',
+        'job.logLeft': '仅显示最后 {n}',
+        'job.logLossy': '更早的输出已被丢弃',
         'act.collapse': '收起',
         'act.expand': '展开',
         'empty.flights.hint': '点一下复制',
@@ -137,6 +141,10 @@ window.__ModuleLoader__.load({
         'act.snooze': 'Later',
         'act.snoozeHint': 'Hide for 30 minutes (stored on this machine only)',
         'snooze.note': '{n} snoozed',
+        'job.log': 'Log',
+        'job.logEmpty': '(no output in this range)',
+        'job.logLeft': 'last {n} only',
+        'job.logLossy': 'earlier output dropped',
         'act.collapse': 'Collapse',
         'act.expand': 'Expand',
         'empty.flights.hint': 'tap to copy',
@@ -405,6 +413,9 @@ window.__ModuleLoader__.load({
 .twr-entry__badge { min-width: 14px; height: 14px; padding: 0 4px; border-radius: 999px; background: ${T.bad}; color: #fff;
   font-size: 9px; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
 
+.twr-log { margin: 0; padding: 7px 8px; border-radius: 6px; border: 1px solid ${T.border};
+  background: color-mix(in srgb, currentColor 5%, transparent); font-family: ${T.mono}; font-size: 10px;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 190px; overflow: auto; color: ${T.text2}; }
 .twr-clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .twr-clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .twr-num { font-variant-numeric: tabular-nums; }
@@ -841,6 +852,44 @@ window.__ModuleLoader__.load({
         )
       }
 
+      function JobLog(props) {
+        const log = props.log
+        const t = props.t
+        if (log.loading) {
+          return h('div', { style: { padding: '2px 0' } }, h(Skeleton, null))
+        }
+        if (log.error) {
+          return h(
+            'div',
+            {
+              style: {
+                fontSize: 10,
+                lineHeight: 1.5,
+                color: T.bad,
+                padding: '4px 6px',
+                borderRadius: 6,
+                background: 'color-mix(in srgb, ' + T.bad + ' 8%, transparent)',
+              },
+            },
+            log.error,
+          )
+        }
+        return h(
+          'div',
+          { style: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 } },
+          h('pre', { className: 'twr-log' }, log.text && log.text.length > 0 ? log.text : t('job.logEmpty')),
+          log.truncated || log.lossy
+            ? h(
+                'div',
+                { style: { fontSize: 9.5, color: T.faint } },
+                [log.truncated ? t('job.logLeft', { n: formatBytes(log.from) }) : '', log.lossy ? t('job.logLossy') : '']
+                  .filter(Boolean)
+                  .join(' · '),
+              )
+            : null,
+        )
+      }
+
       function FlightCard(props) {
         const flight = props.flight
         const action = props.action
@@ -1029,6 +1078,7 @@ window.__ModuleLoader__.load({
         const [jobsOpen, setJobsOpen] = React.useState(null)
         const [schedulesOpen, setSchedulesOpen] = React.useState(null)
         const [refreshing, setRefreshing] = React.useState(false)
+        const [logs, setLogs] = React.useState({})
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1076,6 +1126,56 @@ window.__ModuleLoader__.load({
         function restoreSnoozed() {
           setSnooze({})
           writeSnooze({})
+        }
+
+        async function toggleLog(row) {
+          const id = row.job.id
+          const current = logs[id]
+          if (current && current.open) {
+            setLogs((prev) => Object.assign({}, prev, { [id]: Object.assign({}, prev[id], { open: false }) }))
+            return
+          }
+          setLogs((prev) => Object.assign({}, prev, { [id]: { open: true, loading: true, text: '', error: '', from: 0, truncated: false, lossy: false } }))
+          try {
+            const url =
+              API +
+              '?job=' +
+              encodeURIComponent(id) +
+              '&session=' +
+              encodeURIComponent(row.flight.sessionId) +
+              '&tail=4000'
+            const response = await fetch(url, { cache: 'no-store', headers: { accept: 'application/json' } })
+            const data = await response.json().catch(() => null)
+            if (!data || data.ok !== true) throw new Error((data && data.error) || 'HTTP ' + response.status)
+            const meta = data.job || {}
+            setLogs((prev) =>
+              Object.assign({}, prev, {
+                [id]: {
+                  open: true,
+                  loading: false,
+                  text: String(data.text || ''),
+                  error: '',
+                  from: Number(meta.from) || 0,
+                  truncated: Boolean(meta.truncated),
+                  lossy: Boolean(meta.lossy),
+                },
+              }),
+            )
+          } catch (error) {
+            setLogs((prev) =>
+              Object.assign({}, prev, {
+                [id]: {
+                  open: true,
+                  loading: false,
+                  text: '',
+                  error: String(error && error.message ? error.message : error),
+                  from: 0,
+                  truncated: false,
+                  lossy: false,
+                },
+              }),
+            )
+          }
         }
 
         function onCopy(key, prompt) {
@@ -1374,6 +1474,14 @@ window.__ModuleLoader__.load({
                             ),
                             row.job.progress ? h('span', { className: 'twr-ellipsis', style: { minWidth: 0 } }, '· ' + row.job.progress) : null,
                             h('span', { style: { flex: 1 } }),
+                            h(
+                              Button,
+                              {
+                                tone: row.job.status === 'failed' ? 'danger' : 'ghost',
+                                onClick: () => toggleLog(row),
+                              },
+                              t('job.log'),
+                            ),
                             row.job.status === 'running' || row.job.status === 'stopping'
                               ? h(
                                   Button,
@@ -1400,6 +1508,9 @@ window.__ModuleLoader__.load({
                                 },
                                 row.job.detail,
                               )
+                            : null,
+                          logs[row.job.id] && logs[row.job.id].open
+                            ? h(JobLog, { log: logs[row.job.id], t })
                             : null,
                         ),
                       )

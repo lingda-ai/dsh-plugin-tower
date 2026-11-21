@@ -37,7 +37,22 @@ const fakeCtx = {
         complete: (a, ref) => ({ ...goalView, phase: 'complete', revision: ref.revision }),
       }
     }
-    if (name === 'jobs') return { list: () => [], kill: () => 'requested' }
+    if (name === 'jobs') {
+      return {
+        list: () => [],
+        kill: () => 'requested',
+        get: (id, caller) => {
+          if (id !== 'bash-1') throw new Error('job not found')
+          if (caller && caller !== 'session-a') throw new Error('foreign job')
+          return { id, status: 'failed', output: { total: 12000 } }
+        },
+        readAt: (id, from, caller) => {
+          if (id !== 'bash-1') throw new Error('job not found')
+          if (caller && caller !== 'session-a') throw new Error('foreign job')
+          return { chunks: [{ at: from, text: 'line-1\nline-2\nTypeError: boom\n' }], next: 12000, lossy: false }
+        },
+      }
+    }
     if (name === 'schedule') return { catalog: async () => [], run: async () => ({ id: 'x' }) }
     return null
   },
@@ -122,6 +137,21 @@ assert(sameOrigin.status === 200 && sameOrigin.body.ok === true, 'localhost 源�
 
 const badBody = await call('POST', '/dsh-tower/api', { host: '127.0.0.1:64700' }, { action: 'goal.pause' })
 assert(badBody.status === 200 && badBody.body.ok === false, '缺少会话 id 的动作被拒（业务层）')
+
+const tail = await call('GET', '/dsh-tower/api?job=bash-1&session=session-a&tail=4000', { host: '127.0.0.1:64700' })
+assert(tail.status === 200 && tail.body.ok === true, '作业日志尾部 200')
+assert(tail.body.text.indexOf('TypeError: boom') >= 0, '日志尾部包含失败行')
+assert(tail.body.job.truncated === true && tail.body.job.from === 8000, '尾部截断元信息正确')
+assert(tail.body.job.total === 12000, '尾部返回输出总量')
+
+const noJob = await call('GET', '/dsh-tower/api?job=bash-404&session=session-a', { host: '127.0.0.1:64700' })
+assert(noJob.body.ok === false, '未知作业返回失败而不是空文本')
+
+const foreign = await call('GET', '/dsh-tower/api?job=bash-1&session=session-b', { host: '127.0.0.1:64700' })
+assert(foreign.body.ok === false, '跨会话读作业被拒')
+
+const emptyJob = await call('GET', '/dsh-tower/api?job=', { host: '127.0.0.1:64700' })
+assert(emptyJob.body.ok === false && emptyJob.body.error === '缺少作业 id', '空作业 id 被显式拒绝')
 
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')

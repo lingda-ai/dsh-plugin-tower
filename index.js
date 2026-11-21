@@ -14,6 +14,9 @@
 
 const API_PREFIX = '/dsh-tower/api'
 
+/** 日志尾部的硬上限：一次最多取 8KB，返回文本再截 20k 字符（双保险）。 */
+const MAX_TAIL_BYTES = 8000
+
 /** 硬依赖：没有 HTTP 载体就没有面板。缺这个服务时插件不激活，而不是半死。 */
 export const inject = ['webServer']
 
@@ -267,6 +270,45 @@ async function buildSnapshot(ctx, options) {
 }
 
 /**
+ * 读一条后台作业的输出尾部。
+ * 只读、不动游标（用 readAt 而不是 read），因此不会干扰模型自己的读取偏移。
+ * 所有权由 jobs registry 用 caller sessionId 围栏，这里不做第二套鉴权。
+ */
+function readJobTail(ctx, jobId, sessionId, tail) {
+  const jobsSvc = service(ctx, 'jobs')
+  if (typeof jobsSvc?.get !== 'function' || typeof jobsSvc?.readAt !== 'function') {
+    return { ok: false, error: '作业服务不可用' }
+  }
+  if (typeof jobId !== 'string' || jobId.length === 0) return { ok: false, error: '缺少作业 id' }
+  const wanted = Number(tail)
+  const size = Math.min(MAX_TAIL_BYTES, Math.max(200, Number.isFinite(wanted) && wanted > 0 ? wanted : 4000))
+  const caller = typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : undefined
+  try {
+    const view = jobsSvc.get(jobId, caller)
+    const total = Number(view && view.output && view.output.total) || 0
+    const from = Math.max(0, total - size)
+    const read = jobsSvc.readAt(jobId, from, caller)
+    const chunks = read && Array.isArray(read.chunks) ? read.chunks : []
+    let text = chunks.map((chunk) => (chunk && typeof chunk.text === 'string' ? chunk.text : '')).join('')
+    if (text.length > 20000) text = text.slice(text.length - 20000)
+    return {
+      ok: true,
+      job: {
+        id: jobId,
+        status: String((view && view.status) || ''),
+        total,
+        from,
+        truncated: from > 0,
+        lossy: Boolean(read && read.lossy),
+      },
+      text,
+    }
+  } catch (error) {
+    return { ok: false, error: String(error && error.message ? error.message : error) }
+  }
+}
+
+/**
  * 三个动作，全部要求「活的 agent」+「用户提供的精确 rev/id」。
  * 没有乐观更新、没有批量执行：一次点击一个动作，失败原样回传。
  */
@@ -388,6 +430,15 @@ async function handleRequest(ctx, req, res) {
   if (method === 'GET' || method === 'HEAD') {
     try {
       const url = new URL(String(req.url || '/'), 'http://127.0.0.1')
+      const jobId = url.searchParams.get('job')
+      if (url.searchParams.has('job')) {
+        sendJson(
+          res,
+          200,
+          readJobTail(ctx, jobId, url.searchParams.get('session') || '', url.searchParams.get('tail')),
+        )
+        return
+      }
       const lean = url.searchParams.get('counts') === '1'
       sendJson(res, 200, await buildSnapshot(ctx, { lean }))
     } catch (error) {
@@ -432,4 +483,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail }

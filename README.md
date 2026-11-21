@@ -71,6 +71,7 @@ Host 半只暴露一个同源前缀路由 `/dsh-tower/api`，无配置项、无�
 |---|---|
 | `GET /dsh-tower/api` | 完整快照：`counts` / `attention` / `flights` / `schedules` |
 | `GET /dsh-tower/api?counts=1` | 轻量包：只要 `counts` + `attention`（输入框角标用，9s 一取） |
+| `GET /dsh-tower/api?job=<id>&session=<sid>&tail=4000` | 某条后台作业的输出尾部：只读、不动模型游标，最多 8KB，带 `truncated`/`lossy` 标记 |
 | `POST /dsh-tower/api` | 一个动作，一次一个 |
 
 POST body 与动作：
