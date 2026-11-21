@@ -20,7 +20,7 @@
 | P2 | 仓库可见性改为**公开** | ⬜ | 目录收录与外部安装都要求公开；改完把 README 里的安装行补上 |
 | P3 | GitHub 镜像仓 | ⬜ | **better-sidebar 目录只收 GitHub URL**；缺它进不了默认组合 |
 | P4 | npm 发布 `dsh-plugin-tower` | ⬜ | 名字已查：**未被占用**（registry 404）。标准安装路径是 npm，Git URL 安装对普通用户是门槛 |
-| P5 | 打 tag `v0.1.4` + Release 说明 | ⬜ | 版本号已升到 0.1.1（空态与信息密度改进） |
+| P5 | 打 tag `v0.1.5` + Release 说明 | ⬜ | 版本号已升到 0.1.1（空态与信息密度改进） |
 
 > P3 没有 GitHub 账号也能先做 P4；两者都不阻塞 P5。
 
@@ -42,10 +42,10 @@ DSH 右侧栏 Agent 运行值守台：跨会话看清谁在飞、谁卡住、谁
 dsh  deepseek-harness  dsh-plugin  dsh-better-sidebar  agent  agent-observability  goal  sidebar
 ```
 
-**Release v0.1.4 说明**
+**Release v0.1.5 说明**
 
 ```
-## 塔台 v0.1.4
+## 塔台 v0.1.5
 
 首个公开版本：右侧栏「全机运行值守」。
 
@@ -127,9 +127,9 @@ dsh plugin --profile <profile> add dsh-plugin-tower
 ## 4. 发布前自检（贴进 Release）
 
 - [ ] `node test/smoke.mjs` 21 条 PASS
-- [ ] `node test/route.mjs` 15 条 PASS
+- [ ] `node test/route.mjs` 20 条 PASS
 - [ ] `node test/wiring.mjs` 14 条 PASS
-- [ ] `node test/render.mjs` 22 条 PASS
+- [ ] `node test/render.mjs` 23 条 PASS
 - [ ] 重启后 `POST /dsh-tower/api` 返回 JSON（不是 405）
 - [ ] 右栏 tab 可见、输入框按钮带角标
 - [ ] 空态显示三条上手引导（新装用户第一眼）

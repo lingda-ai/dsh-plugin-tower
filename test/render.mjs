@@ -233,6 +233,10 @@ const snapshot = {
       jobs: [],
     },
   ],
+  recent: [
+    { at: now - 5000, verb: 'pause', sessionId: 'session-a', label: '把右侧栏插件做成可交付的产品', outcome: 'ok' },
+    { at: now - 90000, verb: 'kill', sessionId: 'session-a', label: 'pnpm build', outcome: 'requested' },
+  ],
   schedules: [
     {
       id: 'sched-1',
@@ -294,6 +298,7 @@ assert(joined.indexOf('建目标') >= 0, '无目标卡片给出「建目标」�
 assert(joined.indexOf('当前') >= 0, '渲染出当前会话标记')
 assert(joined.indexOf('第 8 轮') >= 0, '渲染出轮次元信息')
 assert(joined.indexOf('本机只读快照') >= 0, '渲染出页脚')
+assert(joined.indexOf('最近处置') >= 0, '渲染出「最近处置」分区')
 
 // 空快照也要能渲染（新装用户第一眼）
 const emptyStore = {

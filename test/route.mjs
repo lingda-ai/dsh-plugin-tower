@@ -119,6 +119,12 @@ const pause = await call(
 )
 assert(pause.status === 200 && pause.body.ok === true && pause.body.result.phase === 'paused', 'POST 目标暂停')
 
+const afterPauseSnap = await call('GET', '/dsh-tower/api', { host: '127.0.0.1:64700' })
+assert(Array.isArray(afterPauseSnap.body.recent) && afterPauseSnap.body.recent.length > 0, '快照带处置记录')
+assert(afterPauseSnap.body.recent[0].verb === 'pause', '最新一条记录是刚才的暂停')
+assert(afterPauseSnap.body.recent[0].label.indexOf('demo') >= 0, '记录里带目标原文')
+assert(lean.body.recent.length === 0, 'lean 包不带处置记录')
+
 const cross = await call(
   'POST',
   '/dsh-tower/api',

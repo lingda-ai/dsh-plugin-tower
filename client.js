@@ -46,6 +46,16 @@ window.__ModuleLoader__.load({
         'section.flights': '航班',
         'section.jobs': '后台作业',
         'section.schedules': '定时航班',
+        'section.recent': '最近处置',
+        'recent.note': '本次运行内 · 只记你点过的动作',
+        'verb.pause': '暂停',
+        'verb.resume': '继续',
+        'verb.complete': '完成',
+        'verb.kill': '终止',
+        'verb.run': '立即执行',
+        'density.compact': '紧凑',
+        'density.comfortable': '舒适',
+        'act.density': '切换信息密度',
         'empty.flights.title': '塔台安静',
         'empty.attention': '没有需要你判断的事。',
         'empty.jobs': '没有正在跑的后台作业。',
@@ -130,6 +140,16 @@ window.__ModuleLoader__.load({
         'section.flights': 'Flights',
         'section.jobs': 'Background jobs',
         'section.schedules': 'Schedules',
+        'section.recent': 'Recent actions',
+        'recent.note': 'this run only · what you clicked',
+        'verb.pause': 'Pause',
+        'verb.resume': 'Resume',
+        'verb.complete': 'Complete',
+        'verb.kill': 'Kill',
+        'verb.run': 'Run now',
+        'density.compact': 'Compact',
+        'density.comfortable': 'Comfortable',
+        'act.density': 'Toggle density',
         'empty.flights.title': 'Tower is quiet',
         'empty.attention': 'Nothing needs your judgement.',
         'empty.jobs': 'No background job is running.',
@@ -389,6 +409,13 @@ window.__ModuleLoader__.load({
 .twr-scope > button:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 0; }
 
 .twr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; align-items: start; }
+.twr-mini { height: 18px; padding: 0 6px; font-size: 10px; }
+.twr-root[data-density="compact"] .twr-section { padding: 7px 10px 0; gap: 5px; }
+.twr-root[data-density="compact"] .twr-card { padding: 6px 8px; gap: 4px; }
+.twr-root[data-density="compact"] .twr-card__meta { display: none; }
+.twr-root[data-density="compact"] .twr-card__actions { gap: 4px; }
+.twr-root[data-density="compact"] .twr-btn { height: 20px; }
+.twr-root[data-density="compact"] .twr-grid { gap: 6px; }
 .twr-card--focus { border-color: ${T.brand}; box-shadow: 0 0 0 1px ${T.brand}; }
 
 .twr-hint { display: flex; align-items: flex-start; gap: 7px; width: 100%; text-align: left;
@@ -586,6 +613,9 @@ window.__ModuleLoader__.load({
       if (kind === 'jobs') {
         return h('svg', common, h('path', { d: 'm4 17 6-6-6-6' }), h('path', { d: 'M12 19h8' }))
       }
+      if (kind === 'recent') {
+        return h('svg', common, h('path', { d: 'M3.5 12a8.5 8.5 0 1 0 2.6-6.1' }), h('path', { d: 'M3.5 4.5V10h5.5' }), h('path', { d: 'M12 8v4.5l3 1.8' }))
+      }
       if (kind === 'schedules') {
         return h('svg', common, h('circle', { cx: 12, cy: 12, r: 8.5 }), h('path', { d: 'M12 7.5V12l3 2' }))
       }
@@ -661,7 +691,7 @@ window.__ModuleLoader__.load({
     function Section(props) {
       return h(
         'section',
-        { style: { display: 'flex', flexDirection: 'column', gap: 7, padding: '11px 12px 0' } },
+        { className: 'twr-section', style: { display: 'flex', flexDirection: 'column', gap: 7, padding: '11px 12px 0' } },
         h(SectionTitle, { title: props.title, count: props.count, kind: props.kind, trailing: props.trailing }),
         props.children,
       )
@@ -733,6 +763,34 @@ window.__ModuleLoader__.load({
     // #region panel
     function makePanel(ctx, t, store) {
       const SNOOZE_KEY = 'dsh-tower.snooze.v1'
+      const DENSITY_KEY = 'dsh-tower.density.v1'
+      const SECTIONS_KEY = 'dsh-tower.sections.v1'
+
+      function readDensity() {
+        try {
+          return window.localStorage.getItem(DENSITY_KEY) === 'compact' ? 'compact' : 'comfortable'
+        } catch {
+          return 'comfortable'
+        }
+      }
+
+      function readSections() {
+        try {
+          const raw = window.localStorage.getItem(SECTIONS_KEY)
+          const parsed = raw ? JSON.parse(raw) : null
+          return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+        } catch {
+          return {}
+        }
+      }
+
+      function writeSections(value) {
+        try {
+          window.localStorage.setItem(SECTIONS_KEY, JSON.stringify(value))
+        } catch {
+          /* 隐私模式下不持久，本轮仍生效 */
+        }
+      }
       const SNOOZE_MS = 30 * 60 * 1000
 
       function readSnooze() {
@@ -941,11 +999,13 @@ window.__ModuleLoader__.load({
             liveJobs.length > 0 ? h('span', null, t('flight.jobs', { n: liveJobs.length })) : null,
             failedJobs.length > 0 ? h('span', { style: { color: T.bad } }, t('flight.failedJobs', { n: failedJobs.length })) : null,
             h('span', { style: { flex: 1 } }),
-            meta.length > 0 ? h('span', { style: { color: T.faint, whiteSpace: 'nowrap' } }, meta) : null,
+            meta.length > 0
+              ? h('span', { className: 'twr-card__meta', style: { color: T.faint, whiteSpace: 'nowrap' } }, meta)
+              : null,
           ),
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 1 } },
+            { className: 'twr-card__actions', style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 1 } },
             h(Button, { tone: 'ghost', onClick: () => openSession(flight.sessionId) }, t('act.open')),
             !goal ? h(Button, { onClick: onNewGoal }, t('act.newGoal')) : null,
             goal && goal.phase === 'active' && goal.activation === 'armed'
@@ -1085,8 +1145,8 @@ window.__ModuleLoader__.load({
         const [scope, setScope] = React.useState('all')
         const [snooze, setSnooze] = React.useState(readSnooze)
         const [copied, setCopied] = React.useState('')
-        const [jobsOpen, setJobsOpen] = React.useState(null)
-        const [schedulesOpen, setSchedulesOpen] = React.useState(null)
+        const [density, setDensity] = React.useState(readDensity)
+        const [sections, setSections] = React.useState(readSections)
         const [refreshing, setRefreshing] = React.useState(false)
         const [logs, setLogs] = React.useState({})
         const [cursor, setCursor] = React.useState(-1)
@@ -1195,8 +1255,30 @@ window.__ModuleLoader__.load({
           window.setTimeout(() => setCopied(''), 1400)
         }
 
-        const jobsExpanded = jobsOpen === null ? jobs.length > 0 : jobsOpen
-        const schedulesExpanded = schedulesOpen === null ? schedules.length > 0 : schedulesOpen
+        function sectionOpen(key, autoValue) {
+          return Object.prototype.hasOwnProperty.call(sections, key) ? Boolean(sections[key]) : autoValue
+        }
+
+        function toggleSection(key, autoValue) {
+          const next = Object.assign({}, sections, { [key]: !sectionOpen(key, autoValue) })
+          setSections(next)
+          writeSections(next)
+        }
+
+        function toggleDensity() {
+          const next = density === 'compact' ? 'comfortable' : 'compact'
+          setDensity(next)
+          try {
+            window.localStorage.setItem(DENSITY_KEY, next)
+          } catch {
+            /* 不持久也不影响本轮 */
+          }
+        }
+
+        const jobsExpanded = sectionOpen('jobs', jobs.length > 0)
+        const schedulesExpanded = sectionOpen('schedules', schedules.length > 0)
+        const recent = snapshot.recent || []
+        const recentExpanded = sectionOpen('recent', false)
         const loading = snapshot.loading && !snapshot.at
         const banner = action.error || (!snapshot.ok && snapshot.error ? snapshot.error : '')
 
@@ -1258,6 +1340,7 @@ window.__ModuleLoader__.load({
             'div',
             {
               className: 'twr-root',
+              'data-density': density,
               tabIndex: 0,
               onKeyDown,
               'aria-label': t('title'),
@@ -1289,6 +1372,16 @@ window.__ModuleLoader__.load({
               h('span', { style: { fontWeight: 600, fontSize: 12.5 } }, t('title')),
               h('span', { style: { color: T.faint, fontSize: 10 } }, t('head.sub')),
               h('span', { style: { flex: 1 } }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'twr-btn twr-btn--ghost twr-mini',
+                  title: t('act.density'),
+                  onClick: toggleDensity,
+                },
+                density === 'compact' ? t('density.comfortable') : t('density.compact'),
+              ),
               h(
                 IconButton,
                 {
@@ -1472,7 +1565,7 @@ window.__ModuleLoader__.load({
                             type: 'button',
                             className: 'twr-plus',
                             title: jobsExpanded ? t('act.collapse') : t('act.expand'),
-                            onClick: () => setJobsOpen(!jobsExpanded),
+                            onClick: () => toggleSection('jobs', jobs.length > 0),
                           },
                           jobsExpanded ? '−' : '+',
                         )
@@ -1581,7 +1674,7 @@ window.__ModuleLoader__.load({
                             type: 'button',
                             className: 'twr-plus',
                             title: schedulesExpanded ? t('act.collapse') : t('act.expand'),
-                            onClick: () => setSchedulesOpen(!schedulesExpanded),
+                            onClick: () => toggleSection('schedules', schedules.length > 0),
                           },
                           schedulesExpanded ? '−' : '+',
                         )
@@ -1628,6 +1721,64 @@ window.__ModuleLoader__.load({
                     : null,
               ),
             ),
+
+            // ⑤ 最近处置（本次运行内的动作账）
+            recent.length > 0
+              ? h(
+                  Section,
+                  {
+                    title: t('section.recent'),
+                    count: recent.length,
+                    kind: 'recent',
+                    trailing: h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'twr-plus',
+                        title: recentExpanded ? t('act.collapse') : t('act.expand'),
+                        onClick: () => toggleSection('recent', false),
+                      },
+                      recentExpanded ? '−' : '+',
+                    ),
+                  },
+                  recentExpanded
+                    ? recent.map((entry, index) =>
+                        h(
+                          'div',
+                          {
+                            key: String(entry.at) + ':' + index,
+                            style: {
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              fontSize: 10.5,
+                              color: T.text2,
+                              minWidth: 0,
+                            },
+                          },
+                          h(
+                            'span',
+                            { className: 'twr-num', style: { color: T.faint, whiteSpace: 'nowrap' } },
+                            formatClock(entry.at),
+                          ),
+                          h('span', { style: { whiteSpace: 'nowrap' } }, t('verb.' + entry.verb)),
+                          h(
+                            'span',
+                            { className: 'twr-ellipsis', style: { color: T.text, minWidth: 0 } },
+                            entry.label || '—',
+                          ),
+                          h('span', { style: { flex: 1 } }),
+                          entry.outcome && entry.outcome !== 'ok' && entry.outcome !== 'requested'
+                            ? h(Chip, { color: T.warn }, String(entry.outcome))
+                            : null,
+                        ),
+                      )
+                    : null,
+                  recentExpanded
+                    ? h('div', { style: { fontSize: 9.5, color: T.faint, paddingTop: 2 } }, t('recent.note'))
+                    : h(EmptyLine, null, t('recent.note')),
+                )
+              : null,
             // 页脚
             h(
               'div',

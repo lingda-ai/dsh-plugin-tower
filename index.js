@@ -17,6 +17,28 @@ const API_PREFIX = '/dsh-tower/api'
 /** 日志尾部的硬上限：一次最多取 8KB，返回文本再截 20k 字符（双保险）。 */
 const MAX_TAIL_BYTES = 8000
 
+/**
+ * 本次运行内的处置记录。只记「人点过且成功」的动作，不推测、不补记。
+ * 内存 ring：重启即清空——所以 UI 上必须写「本次运行内」，不能伪装成审计日志。
+ * 它是 L4 审计层的第一步：事件源已经存在，后续只需落盘 + 哈希链。
+ */
+const ACTION_HISTORY_LIMIT = 30
+const actionHistory = []
+
+function recordAction(entry) {
+  actionHistory.push(entry)
+  if (actionHistory.length > ACTION_HISTORY_LIMIT) {
+    actionHistory.splice(0, actionHistory.length - ACTION_HISTORY_LIMIT)
+  }
+}
+
+function recentActions() {
+  return actionHistory
+    .slice(-20)
+    .map((entry) => Object.assign({}, entry))
+    .reverse()
+}
+
 /** 硬依赖：没有 HTTP 载体就没有面板。缺这个服务时插件不激活，而不是半死。 */
 export const inject = ['webServer']
 
@@ -266,6 +288,7 @@ async function buildSnapshot(ctx, options) {
     attention,
     flights: options.lean ? [] : flights,
     schedules,
+    recent: options.lean ? [] : recentActions(),
   }
 }
 
@@ -327,6 +350,13 @@ async function handleAction(ctx, body) {
     if (typeof goalsSvc[verb] !== 'function') return { ok: false, error: '目标服务不支持该动作' }
     try {
       const view = goalsSvc[verb](agent, ref)
+      recordAction({
+        at: Date.now(),
+        verb,
+        sessionId,
+        label: text(view && view.objective, 80),
+        outcome: 'ok',
+      })
       return { ok: true, result: projectGoal(view) }
     } catch (error) {
       return { ok: false, error: String(error && error.message ? error.message : error) }
@@ -340,7 +370,15 @@ async function handleAction(ctx, body) {
       return { ok: false, error: '后台作业不可用，或该会话已不在运行' }
     }
     try {
+      const before = attempt(() => jobsSvc.get(jobId, sessionId), null)
       const outcome = jobsSvc.kill(jobId, sessionId, '用户从塔台终止')
+      recordAction({
+        at: Date.now(),
+        verb: 'kill',
+        sessionId,
+        label: text(before && before.label, 80),
+        outcome: String(outcome),
+      })
       return { ok: true, result: { outcome: String(outcome) } }
     } catch (error) {
       return { ok: false, error: String(error && error.message ? error.message : error) }
@@ -355,6 +393,22 @@ async function handleAction(ctx, body) {
     }
     try {
       const result = await scheduleSvc.run({ id: scheduleId })
+      let label = scheduleId
+      try {
+        if (typeof scheduleSvc.view === 'function') {
+          const view = await scheduleSvc.view({ id: scheduleId })
+          if (view && typeof view.title === 'string') label = text(view.title, 80)
+        }
+      } catch {
+        /* 取标题失败不影响动作本身，退化成 id */
+      }
+      recordAction({
+        at: Date.now(),
+        verb: 'run',
+        sessionId: '',
+        label,
+        outcome: String(result?.code ?? 'ok'),
+      })
       return { ok: true, result: { code: String(result?.code ?? 'ok') } }
     } catch (error) {
       return { ok: false, error: String(error && error.message ? error.message : error) }
@@ -483,4 +537,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions }
