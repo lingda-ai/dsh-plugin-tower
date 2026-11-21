@@ -2,6 +2,15 @@
   "name": "dsh-plugin-tower",
   "version": "0.1.6",
   "description": "Tower: a local control tower for live agents in the right sidebar — goals, background jobs, schedules and the interventions they need.",
+  "author": "LingDaAi (lingda-ai)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/linzhengtong/dsh-plugin-tower.git"
+  },
+  "homepage": "https://gitee.com/linzhengtong/dsh-plugin-tower#readme",
+  "bugs": {
+    "url": "https://gitee.com/linzhengtong/dsh-plugin-tower/issues"
+  },
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -32,6 +41,10 @@
     "sidebar"
   ],
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "engines": {
     "node": ">=20"
   },
