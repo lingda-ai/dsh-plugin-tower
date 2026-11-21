@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-tower",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Tower: a local control tower for live agents in the right sidebar — goals, background jobs, schedules and the interventions they need.",
   "type": "module",
   "main": "./index.js",

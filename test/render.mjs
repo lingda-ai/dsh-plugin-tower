@@ -133,6 +133,8 @@ const snapshot = {
   loading: false,
   error: '',
   at: now,
+  version: '0.1.6',
+  caps: { agents: true, goals: true, jobs: true, log: true, schedule: true, sessions: true },
   counts: { live: 3, running: 1, goals: 1, urgent: 1, waiting: 1, jobs: 2, schedules: 1 },
   attention: [
     {
@@ -299,6 +301,7 @@ assert(joined.indexOf('当前') >= 0, '渲染出当前会话标记')
 assert(joined.indexOf('第 8 轮') >= 0, '渲染出轮次元信息')
 assert(joined.indexOf('本机只读快照') >= 0, '渲染出页脚')
 assert(joined.indexOf('最近处置') >= 0, '渲染出「最近处置」分区')
+assert(joined.indexOf('v0.1.6') >= 0, '页脚渲染出版本号')
 
 // 空快照也要能渲染（新装用户第一眼）
 const emptyStore = {
@@ -320,5 +323,25 @@ const emptyJoined = text.join('|')
 assert(emptyThrew === null, '空快照渲染不抛异常' + (emptyThrew ? '（' + emptyThrew.message + '）' : ''))
 assert(emptyJoined.indexOf('塔台安静') >= 0, '空态渲染出标题')
 assert(emptyJoined.indexOf('给这件事建一个目标') >= 0, '空态渲染出起手式')
+
+// 降级场景：宿主缺 schedule / jobs
+const degradedStore = {
+  get: () => Object.assign({}, snapshot, { caps: { agents: true, goals: true, jobs: false, log: false, schedule: false, sessions: true } }),
+  subscribe: () => () => {},
+  wantFull: () => {},
+  refresh: async () => {},
+}
+const DegradedPanel = mod.__test.makePanel({ get: () => null }, t, degradedStore)
+text.length = 0
+elementCount = 0
+let degradedThrew = null
+try {
+  walk(DegradedPanel({ sessionId: 'session-a' }))
+} catch (error) {
+  degradedThrew = error
+}
+const degradedJoined = text.join('|')
+assert(degradedThrew === null, '降级快照渲染不抛异常' + (degradedThrew ? '（' + degradedThrew.message + '）' : ''))
+assert(degradedJoined.indexOf('3 项不可用') >= 0, '页脚显示降级项数')
 
 console.log(process.exitCode ? '\nRENDER FAILED' : '\nRENDER PASSED')

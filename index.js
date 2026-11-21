@@ -12,7 +12,18 @@
  *   - 数据在 Host 进程里现取现序列化，不落盘、不出网、不留副本。
  */
 
+import { createRequire } from 'node:module'
+
 const API_PREFIX = '/dsh-tower/api'
+
+/** 从安装目录的 manifest 读版本：诊断信息必须和实际装的那份一致，不能硬编码。 */
+const PLUGIN_VERSION = (() => {
+  try {
+    return String(createRequire(import.meta.url)('./package.json').version || '0.0.0')
+  } catch {
+    return '0.0.0'
+  }
+})()
 
 /** 日志尾部的硬上限：一次最多取 8KB，返回文本再截 20k 字符（双保险）。 */
 const MAX_TAIL_BYTES = 8000
@@ -49,6 +60,29 @@ function service(ctx, name) {
     return ctx[name] ?? null
   } catch {
     return null
+  }
+}
+
+/** 某个可选服务是否具备全部所需方法（用来区分「本来就没有」和「有了但变了」）。 */
+function hasMethods(ctx, name, methods) {
+  const svc = service(ctx, name)
+  if (!svc) return false
+  return methods.every((method) => typeof svc[method] === 'function')
+}
+
+/**
+ * 能力自检：面板哪些区块有数据源。
+ * 缺失时面板会「静默降级成空区块」，用户很容易误判成「没有东西在跑」——
+ * 所以要把这个事实显式暴露出来，也方便 G1 阶段收到的 issue 自带诊断。
+ */
+function collectCapabilities(ctx) {
+  return {
+    agents: hasMethods(ctx, 'agents', ['list']),
+    goals: hasMethods(ctx, 'goals', ['get', 'pause', 'resume', 'complete']),
+    jobs: hasMethods(ctx, 'jobs', ['list', 'kill']),
+    log: hasMethods(ctx, 'jobs', ['get', 'readAt']),
+    schedule: hasMethods(ctx, 'schedule', ['catalog']),
+    sessions: hasMethods(ctx, 'sessions', ['get']),
   }
 }
 
@@ -284,6 +318,8 @@ async function buildSnapshot(ctx, options) {
   return {
     ok: true,
     at: now,
+    version: PLUGIN_VERSION,
+    caps: collectCapabilities(ctx),
     counts,
     attention,
     flights: options.lean ? [] : flights,
@@ -537,4 +573,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities }

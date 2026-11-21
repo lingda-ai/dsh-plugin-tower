@@ -119,6 +119,11 @@ const pause = await call(
 )
 assert(pause.status === 200 && pause.body.ok === true && pause.body.result.phase === 'paused', 'POST 目标暂停')
 
+const capsSnap = await call('GET', '/dsh-tower/api?counts=1', { host: '127.0.0.1:64700' })
+assert(/^\d+\.\d+\.\d+$/.test(String(capsSnap.body.version)), '快照带插件版本号')
+assert(capsSnap.body.caps && capsSnap.body.caps.goals === true && capsSnap.body.caps.log === true, '能力自检全绿')
+assert(lean.body.caps && lean.body.caps.jobs === true, 'lean 包同样带能力自检')
+
 const afterPauseSnap = await call('GET', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(Array.isArray(afterPauseSnap.body.recent) && afterPauseSnap.body.recent.length > 0, '快照带处置记录')
 assert(afterPauseSnap.body.recent[0].verb === 'pause', '最新一条记录是刚才的暂停')

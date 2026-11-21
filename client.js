@@ -46,6 +46,16 @@ window.__ModuleLoader__.load({
         'section.flights': '航班',
         'section.jobs': '后台作业',
         'section.schedules': '定时航班',
+        'caps.degraded': '{n} 项不可用',
+        'caps.hint': '这些区块会显示为空，不是你操作错了——是宿主没有提供对应服务。',
+        'caps.unavailable': '{name}不可用',
+        'caps.ok': '宿主接口齐全',
+        'cap.agents': 'Agent',
+        'cap.goals': '目标',
+        'cap.jobs': '作业',
+        'cap.log': '作业日志',
+        'cap.schedule': '定时',
+        'cap.sessions': '会话',
         'section.recent': '最近处置',
         'recent.note': '本次运行内 · 只记你点过的动作',
         'verb.pause': '暂停',
@@ -140,6 +150,16 @@ window.__ModuleLoader__.load({
         'section.flights': 'Flights',
         'section.jobs': 'Background jobs',
         'section.schedules': 'Schedules',
+        'caps.degraded': '{n} unavailable',
+        'caps.hint': 'These sections show empty because the host does not provide the service — not because nothing is running.',
+        'caps.unavailable': '{name} unavailable',
+        'caps.ok': 'host services ok',
+        'cap.agents': 'Agent',
+        'cap.goals': 'Goals',
+        'cap.jobs': 'Jobs',
+        'cap.log': 'Job log',
+        'cap.schedule': 'Schedules',
+        'cap.sessions': 'Sessions',
         'section.recent': 'Recent actions',
         'recent.note': 'this run only · what you clicked',
         'verb.pause': 'Pause',
@@ -1150,6 +1170,7 @@ window.__ModuleLoader__.load({
         const [refreshing, setRefreshing] = React.useState(false)
         const [logs, setLogs] = React.useState({})
         const [cursor, setCursor] = React.useState(-1)
+        const [capsOpen, setCapsOpen] = React.useState(false)
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1279,6 +1300,9 @@ window.__ModuleLoader__.load({
         const schedulesExpanded = sectionOpen('schedules', schedules.length > 0)
         const recent = snapshot.recent || []
         const recentExpanded = sectionOpen('recent', false)
+        const caps = snapshot.caps || null
+        const missingCaps = caps ? Object.keys(caps).filter((key) => !caps[key]) : []
+        const degraded = missingCaps.length > 0
         const loading = snapshot.loading && !snapshot.at
         const banner = action.error || (!snapshot.ok && snapshot.error ? snapshot.error : '')
 
@@ -1779,6 +1803,26 @@ window.__ModuleLoader__.load({
                     : h(EmptyLine, null, t('recent.note')),
                 )
               : null,
+            // 降级明细（只在用户点开时展开）
+            capsOpen && degraded
+              ? h(
+                  'div',
+                  {
+                    style: {
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 5,
+                      padding: '7px 12px',
+                      borderTop: '1px solid ' + T.border,
+                      background: 'color-mix(in srgb, ' + T.warn + ' 6%, transparent)',
+                    },
+                  },
+                  missingCaps.map((key) =>
+                    h(Chip, { key, color: T.warn }, t('caps.unavailable', { name: t('cap.' + key) })),
+                  ),
+                  h('div', { style: { fontSize: 9.5, lineHeight: 1.5, color: T.faint, width: '100%' } }, t('caps.hint')),
+                )
+              : null,
             // 页脚
             h(
               'div',
@@ -1793,7 +1837,27 @@ window.__ModuleLoader__.load({
                   color: T.faint,
                 },
               },
-              h('span', { className: 'twr-ellipsis', style: { flex: 1 } }, t('foot.note')),
+              h(
+                'span',
+                { className: 'twr-ellipsis', style: { flex: 1 } },
+                (snapshot.version ? 'v' + snapshot.version + ' · ' : '') + t('foot.note'),
+              ),
+              degraded
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'twr-btn twr-btn--ghost twr-mini',
+                      style: { height: 16, padding: '0 5px', color: T.warn },
+                      title: t('caps.hint'),
+                      onClick: () => setCapsOpen(!capsOpen),
+                    },
+                    t('caps.degraded', { n: missingCaps.length }),
+                  )
+                : h('span', {
+                    title: t('caps.ok'),
+                    style: { width: 6, height: 6, borderRadius: 999, background: T.ok, opacity: 0.7, flex: '0 0 auto' },
+                  }),
               h('span', { className: 'twr-num', style: { whiteSpace: 'nowrap' } }, snapshot.at ? formatClock(snapshot.at) : '—'),
             ),
           ),
