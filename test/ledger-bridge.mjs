@@ -83,6 +83,23 @@ report = await __internal.buildShiftReport(makeCtx(), 24)
 assert(report.markdown.indexOf('窗口内增量') >= 0, '窗口口径被写进报告')
 assert(report.markdown.indexOf('3 条费率未知') >= 0, '未知费率被如实带出')
 
+// 3c) 账本自报「窗口不完整」必须一路带出
+writeFileSync(
+  join(ledgerDir, 'session-a.json'),
+  JSON.stringify(snapshotFor('session-a', { window: { hours: 24, cost: 0.25, entries: 5, unknownEntries: 0, covered: false } })),
+)
+costs = __internal.readLedgerCosts(24 * 3600000, now)
+assert(costs.incomplete === true, 'covered=false 时判定窗口不完整')
+report = await __internal.buildShiftReport(makeCtx(), 24)
+assert(report.markdown.indexOf('窗口可能不完整') >= 0, '报告标注窗口可能不完整')
+
+// 3d) 恢复完整，避免影响后续断言
+writeFileSync(
+  join(ledgerDir, 'session-a.json'),
+  JSON.stringify(snapshotFor('session-a', { window: { hours: 24, cost: 0.25, entries: 5, unknownEntries: 0, covered: true } })),
+)
+assert(__internal.readLedgerCosts(24 * 3600000, now).incomplete === false, 'covered=true 时不报警')
+
 // 4) 陈旧
 writeFileSync(join(ledgerDir, 'session-a.json'), JSON.stringify(snapshotFor('session-a', { generatedAt: new Date(now - 3600000).toISOString() })))
 report = await __internal.buildShiftReport(makeCtx(), 24)

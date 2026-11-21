@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.7.0` |
+| 包 | `dsh-plugin-tower@0.7.1` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
-| 模块代（当前） | `dsh-plugin-tower+0.7.0+9a7b7d37b267` |
-| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed`、`0.3.0+191fc799cf0c`、`0.4.0+828a5b0628c3`、`0.5.0+d3a60a8835cc`、`0.6.0+5b1e3eb3ec55` |
+| 模块代（当前） | `dsh-plugin-tower+0.7.1+5290074be3c2` |
+| 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed`、`0.3.0+191fc799cf0c`、`0.4.0+828a5b0628c3`、`0.5.0+d3a60a8835cc`、`0.6.0+5b1e3eb3ec55`、`0.7.0+9a7b7d37b267` |
 | Config schema | 无（本插件不暴露配置项） |
 | 用户补丁层 | **未被修改**（仅经 bundle 通道挂载） |
 
@@ -360,6 +360,32 @@ job/settled    { …同上…, finishedAt, status:'completed'|'killed'|'failed',
 48 小时前活跃的会话不进 24h / `includeCost=false` 关闭 / 陈旧标注 / 截断提示 / 静态隔离守卫。
 
 **未验证**：真实账本文件里是否已存在 `window` 字段（当前没有，需先在账本侧加，见 integration-ledger.md §5 阶段 1）。
+
+## 7.17 账本侧 window 增量（0.1.14）与塔台 0.7.1
+
+### 账本改了什么
+
+`store.windowTotals(sessionId, {hours, now})`：只读环上条目，按 `at >= since` 聚合
+`cost / saved / entries / knownEntries / unknownEntries / currency / covered`。
+快照新增 `window` 字段；`version` 保持 1（纯增量，老消费方忽略即可）。
+
+关键诚实字段 **`covered`**：环里最老条目晚于窗口起点时，说明窗口起点前的条目已被淘汰 →
+`covered=false`，消费方必须据此降级标注，而不是把残缺数字当完整。
+
+- 仓库：`@lingda-ai/ledger` 0.1.3（实现）→ 用 `scripts/build-bundle.mjs 0.1.14` 重建自包含单包
+- 测试：新增 `test/window.test.mjs` 5 例（窗口过滤 / unknown 不折 0 / covered 两态 / snapshot 仅在请求时带 / payload 透传）；
+  全量 **256 例通过**
+- 已装：`lingda-ai+dsh-plugin-ledger+0.1.14+96e7fde9f88e`
+
+### 塔台 0.7.1 改了什么
+
+读到账本 `covered=false` 时，报告追加「部分会话的窗口可能不完整（账本环已淘汰早期条目）」，
+并把 `incomplete` 带进 `readLedgerCosts` 的返回值（`test/ledger-bridge.mjs` +3 条断言）。
+
+### 未验证（需一次重启）
+
+新代码要重启才进宿主。重启后可确认：账本快照文件里出现 `"window": {…}`，
+且塔台的「值守报告」成本节口径从「累计」变成「窗口内增量」。
 
 ## 8. 你现在需要做的事
 

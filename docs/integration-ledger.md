@@ -85,8 +85,10 @@
 
 - **阶段 0 已交付（0.7.0）**：塔台只读账本快照，报告新增成本节；双模口径（有 `window` 用窗口，否则累计并写明）；
   缺席/坏文件/多币种/陈旧全部按「不可读就隐藏或标注」处理。`test/ledger-bridge.mjs` 22 条。
-- **阶段 1 待做（在账本侧）**：给快照加 `window: { hours, cost, entries, unknownEntries }`。
-  塔台已能直接消费，加完即可自动从「累计」升级为「窗口增量」，**塔台不需要改代码**。
+- **阶段 1 已交付（账本 0.1.14 / 0.7.1）**：快照新增
+  `window: { hours, since, cost, saved, entries, knownEntries, unknownEntries, currency, covered }`。
+  `covered` 是诚实字段：环里最老条目晚于窗口起点时说明早期条目已被淘汰，标 `false`。
+  塔台读到 `covered:false` 会在报告里追加「窗口可能不完整」的提示（0.7.1）。
 
 ## 5b. 推荐路径（决策当时的原文，按顺序，前两步便宜）
 

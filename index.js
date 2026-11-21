@@ -350,6 +350,8 @@ function readLedgerCosts(windowMs, now) {
       unknownWindow: windowed ? Number(parsed.window.unknownEntries) || 0 : null,
       truncated: parsed.truncated === true,
       windowed,
+      // 账本自己说「窗口可能不完整」（环淘汰过早期条目）时，必须一路带出去
+      covered: windowed ? parsed.window.covered !== false : true,
       lastAt: lastAtMs,
     })
   }
@@ -367,6 +369,7 @@ function readLedgerCosts(windowMs, now) {
   let truncated = false
   let newest = 0
   let staleFiles = 0
+  let incomplete = false
   for (const file of files) {
     amount += windowedAll ? Number(file.amountWindow) || 0 : file.amountTotal
     saved += file.saved
@@ -375,6 +378,7 @@ function readLedgerCosts(windowMs, now) {
     truncated = truncated || file.truncated
     newest = Math.max(newest, file.lastAt)
     if (now - file.lastAt > LEDGER_STALE_MS) staleFiles += 1
+    if (file.windowed && file.covered === false) incomplete = true
   }
 
   return {
@@ -390,6 +394,7 @@ function readLedgerCosts(windowMs, now) {
     newestAt: newest,
     stale: staleFiles > 0,
     staleAll: staleFiles === files.length,
+    incomplete,
   }
 }
 
@@ -697,6 +702,7 @@ async function buildShiftReport(ctx, hours) {
     lines.push('- 口径：' + basis + ' · 按本地费率估算' + (ledger.unknown > 0 ? ' · 其中 ' + ledger.unknown + ' 条费率未知' : ''))
     lines.push('- 涉及会话 ' + ledger.sessions + ' 个 · 数据时间 ' + clockOf(ledger.newestAt) + stale)
     if (ledger.truncated) lines.push('- 注意：至少一个账本快照被截断（truncated），合计可能偏低')
+    if (ledger.incomplete) lines.push('- 注意：部分会话的窗口可能不完整（账本环已淘汰早期条目），窗口合计可能偏低')
     lines.push('')
   }
 
