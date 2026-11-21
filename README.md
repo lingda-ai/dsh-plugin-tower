@@ -175,7 +175,15 @@ node test/notify.mjs  # 7 条：通知候选筛选（只弹 urgent、6h 去重�
 node test/audit.mjs   # 12 条：审计哈希链（追加 / 校验 / 篡改检出 / 关闭停写）
 node test/report.mjs  # 14 条：值守报告（小节完整 / 中文标签 / 缺服务降级）
 node test/policy.mjs  # 13 条：策略（默认值 / 夹取 / 热更新 / 阈值生效 / 自动暂停）
-node test/ledger-bridge.mjs # 22 条：账本可选集成（缺席/坏文件/多币种/双模口径/陈旧/静态隔离守卫）：已关闭会话的目标复算（事件折叠 + 缓存 + live 跳过）
+node test/ledger-bridge.mjs # 22 条：账本可选集成（缺席/坏文件/多币种/双模口径/陈旧/静态隔离守卫）
+
+发布前必须跑一次产物验收（验的是**即将发出去的那份**，不是仓库）：
+
+```bash
+node scripts/verify-artifact.mjs --pack --tests ./test
+```
+
+它会把仓库打成 tarball、解开，检查 manifest/patch/入口/资源，并把仓库测试拷进产物目录再跑一遍。：已关闭会话的目标复算（事件折叠 + 缓存 + live 跳过）
 node test/render.mjs  # 28 条：用玩具 React 整棵渲染（有数据 + 空态），抓渲染期崩溃
 ```
 

@@ -58,5 +58,9 @@
         "@deepseek-ai/dsh-client-ui-sidebar-right"
       ]
     }
+  },
+  "scripts": {
+    "test": "for f in test/*.mjs; do node \"$f\" || exit 1; done",
+    "verify:artifact": "node scripts/verify-artifact.mjs --pack --tests ./test"
   }
 }

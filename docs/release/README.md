@@ -142,6 +142,18 @@ dsh plugin --profile <profile> add dsh-plugin-tower
   npm i dsh-plugin-tower@0.4.0 --prefix /tmp/t   # 期望 added 1 package
   ```
 
+## 3.8 产物闸门（发布前必须过）
+
+```bash
+node scripts/verify-artifact.mjs --pack --tests ./test
+```
+
+验的是「打包出来的那一份」，不是仓库：33 项检查（manifest / patch / Host 入口 / client 形态 /
+icon / locale / 隔离）+ 把 12 个测试文件拷进产物目录再跑一遍。
+
+为什么需要它：仓库测试全绿、但发出去的包里少一个文件或 patch 指错，用户装完就是「插件没出现」。
+2026-11-21 首次跑这个闸门时，0.7.2 的 npm 产物 33 项全过、产物内 12 个测试文件全过。
+
 ## 4. 发布前自检（贴进 Release）
 
 - [ ] `node test/smoke.mjs` 21 条 PASS

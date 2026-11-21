@@ -436,6 +436,25 @@ curl -s http://127.0.0.1:<当前端口>/dsh-tower/api?counts=1 | python3 -c "imp
 **0.7.2 修的是报告可读性**：24h 内 731 条已收口作业原来会直接铺 20 行日志，把一页交接变成日志墙。
 现在改为「汇总 → 失败明细（最多 5 条）→ 省略条数」：结论先行，失败优先。
 
+## 7.20 产物级验收（0.7.2 npm 包）
+
+不再只验仓库，而是**验发出去的那一份**：`scripts/verify-artifact.mjs`。
+
+对 `npm i dsh-plugin-tower@0.7.2` 装出来的目录跑 33 项检查，全部通过：
+
+- manifest：name/version/非 private/bundle.patch/client.platform/client.inject/exports/icon/engines
+- patch：insert 行、`name` 与包名一致、行 id = `dsh-tower`
+- Host：语法、`apply`/`inject=['webServer']`、可被 Node 真正 import、`__internal` 含报告与账本读写
+- client：第一条语句是 `__ModuleLoader__.load`、**只调用一次**（剥注释后判断）、无 import/export、id 正确
+- 资源：icon 是 SVG 且 <256KiB、zh/en 都有 `meta`
+- **隔离**：Host/client 源码都不出现 `@lingda-ai`，manifest 不含账本依赖
+- **把仓库 12 个测试文件拷进产物目录再跑一遍 → 全过**
+
+同时支持 `--pack`：直接从仓库打 tarball 再验，不依赖 registry，用作发布前闸门。
+
+**仍未验证**：在**干净 profile** 里真正 boot 一次（本机无法在不影响现有 profile 的前提下创建第二个
+profile——需要 App 的 profile 切换器或 `dsh` CLI）。这一条只能由人或新机器完成。
+
 ## 8. 你现在需要做的事
 
 1. **刷新页面**看 0.1.1 的空态与航班卡信息。
