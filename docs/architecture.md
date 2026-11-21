@@ -28,7 +28,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 
 | 方法与参数 | 返回 |
 |---|---|
-| `GET /dsh-tower/api` | 完整快照：`version` `caps` `policy` `counts` `attention` `flights` `schedules` `recent` |
+| `GET /dsh-tower/api` | 完整快照：`version` `caps` `policy` `counts` `attention` `flights` `schedules` `recent` `questions` `stream` |
 | `GET /dsh-tower/api?counts=1` | 轻量包：`counts` + `attention` + `policy`（输入框角标用） |
 | `GET ?job=<id>&session=<sid>&tail=4000` | 作业输出尾部：`total` `from` `truncated` `lossy` + `text`（只读，不动模型游标） |
 | `GET ?closed=1&limit=8` | 已关闭会话的最后目标（只读复算持久化日志，不唤醒会话） |
@@ -50,6 +50,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | 定时 | `schedule.catalog()` `run()` | 定时区空 |
 | 已收场 / 作业历史 | `sessionPersistence.list/open('read')` | 两区显示「无」并带原因 |
 | 工作区名 / 事件时间 | `sessions.get()`；`turnBoundary.lastStepBoundary.seq` → `eventAt()` | 名称退化为短 id |
+| 待答（谁在等你） | **事件流**：`ctx.on('session/event')` 折叠 `tool/call`(ask_user_question) → `tool/result` | 待答区为空，其余不受影响 |
 | 成本（可选） | 只读 `~/.dsh/ledger/*.json`（不 import 账本） | 成本节整段消失 |
 
 能力自检 `caps` 在快照里暴露六个布尔（`agents/goals/jobs/log/schedule/sessions`），
@@ -64,6 +65,8 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 5. **账本双模**：账本快照有 `window` 就用窗口增量，否则用累计并**写明口径**；
    绝不把两种口径相加，`covered:false` 一路带出成「窗口可能不完整」。
 6. **渲染兜底**：面板内部异常收敛成可读错误 + 重试，不白屏。
+7. **待答靠事件推断**：宿主没有待答只读接口，改从会话事件流配对（`tool/call` ↔ `tool/result`，`turn/end` 兜底，30 分钟 TTL）。
+   快照里的 `stream.{seen,lastAt,lastType}` 是这条通道的自检：`seen>0` 说明订阅真的通了。
 
 ## 5. 测试
 
@@ -80,6 +83,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `test/audit.mjs` | 哈希链：追加 / 校验 / 篡改检出 / 关闭停写 |
 | `test/report.mjs` | 值守报告小节、中文标签、缺服务降级 |
 | `test/policy.mjs` | 策略默认值 / 夹取 / 热更新 / 自动暂停 |
+| `test/questions.mjs` | 待答队列：折叠 / 收口 / 兜底清除 / TTL / 只对在跑会话生效 |
 | `test/ledger-bridge.mjs` | 账本可选集成：缺席 / 坏文件 / 多币种 / 双模 / 静态隔离守卫 |
 
 ```bash

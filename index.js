@@ -406,6 +406,78 @@ function readLedgerCosts(windowMs, now) {
   }
 }
 
+// #region 待答队列（谁在等你回答）
+/**
+ * 「agent 正卡在等你回答」是值守最该先报的一件事，但宿主没有"待答列表"的只读接口。
+ * 于是从**会话事件流**里推：`tool/call`(name=ask_user_question) 建立，`tool/result` 同 callId 收口，
+ * `turn/end` 兜底清掉，超过 TTL 自动过期。
+ *
+ * 事件形状取自账本采集层的生产代码（tool/call 带 name 与 callId），不是猜的。
+ * 订阅挂在本插件（根 ctx）上；宿主对 agent 作用域有过滤，所以必须根级订阅。
+ */
+const PENDING_QUESTION_TTL = 30 * 60 * 1000
+const pendingQuestions = new Map() // callId → { sessionId, at, summary }
+const eventStream = { seen: 0, lastAt: 0, lastType: '' }
+
+function questionTextOf(args) {
+  let parsed = args
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    } catch {
+      return text(parsed, 160)
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return ''
+  const first = Array.isArray(parsed.questions) ? parsed.questions[0] : null
+  const candidate =
+    (first && (first.question || first.text || first.prompt)) || parsed.question || parsed.text || parsed.prompt
+  return text(String(candidate || ''), 200)
+}
+
+/** 记一条会话事件。sessionId 用于把「待答」路由回对应航班。 */
+function noteSessionEvent(sessionId, event) {
+  const payload = event && event.data && typeof event.data === 'object' ? event.data : event
+  const type = String((event && event.type) || (payload && payload.type) || '')
+  const id = String(sessionId || '')
+  if (type.length === 0) return
+  eventStream.seen += 1
+  eventStream.lastAt = Date.now()
+  eventStream.lastType = type
+
+  const callId = String((payload && payload.callId) || '')
+  if (type === 'tool/call') {
+    if (payload && payload.name === 'ask_user_question' && callId.length > 0 && id.length > 0) {
+      pendingQuestions.set(callId, { sessionId: id, at: Date.now(), summary: questionTextOf(payload.args) })
+    }
+    return
+  }
+  if (type === 'tool/result' && callId.length > 0) {
+    pendingQuestions.delete(callId)
+    return
+  }
+  if (type === 'turn/end' && id.length > 0) {
+    for (const [key, value] of pendingQuestions) {
+      if (value.sessionId === id) pendingQuestions.delete(key)
+    }
+  }
+}
+
+/** 当前有效待答项（按时间倒序，过期即丢）。 */
+function listPendingQuestions(now) {
+  const at = Number(now) || Date.now()
+  const rows = []
+  for (const [callId, value] of pendingQuestions) {
+    if (at - value.at > PENDING_QUESTION_TTL) {
+      pendingQuestions.delete(callId)
+      continue
+    }
+    rows.push({ callId, sessionId: value.sessionId, at: value.at, summary: value.summary })
+  }
+  rows.sort((a, b) => b.at - a.at)
+  return rows
+}
+
 /** 插件自己的数据目录（策略、审计都放这里；不碰用户的代码工作区）。 */
 const TOWER_DATA_DIR = join(process.env.DSH_HOME || join(homedir(), '.dsh-desktop'), '.dsh', 'tower')
 
@@ -1005,8 +1077,24 @@ function maybeAutoPause(ctx, flights, policy, now) {
 }
 
 /** 「需要你」只由确定性规则产生：没有模型、没有猜测、没有阈值玄学。 */
-function collectAttention(flights, now, policy) {
+function collectAttention(flights, now, policy, questions) {
   const items = []
+  // 待答排最前：agent 正卡着，不回答它就不动。
+  const bySession = new Map()
+  for (const flight of flights) bySession.set(flight.sessionId, flight)
+  for (const question of questions || []) {
+    const flight = bySession.get(question.sessionId)
+    if (!flight) continue // 会话已不在跑，问题也就不成立
+    items.push({
+      level: 'urgent',
+      code: 'question.waiting',
+      sessionId: question.sessionId,
+      label: flight.cwdName,
+      title: '在等你回答：' + (question.summary || '（问题内容未捕获）'),
+      detail: '回答之后 agent 才会继续',
+      at: question.at,
+    })
+  }
   for (const flight of flights) {
     if (flight.goal && flight.goal.phase === 'blocked') {
       items.push({
@@ -1097,7 +1185,8 @@ async function buildSnapshot(ctx, options) {
   const policy = readPolicy()
   const flights = collectFlights(ctx, now)
   const autoPaused = maybeAutoPause(ctx, flights, policy, now)
-  const attention = collectAttention(flights, now, policy)
+  const questions = listPendingQuestions(now)
+  const attention = collectAttention(flights, now, policy, questions)
   const schedules = options.lean ? [] : await collectSchedules(ctx, now)
   const counts = {
     live: flights.length,
@@ -1118,6 +1207,8 @@ async function buildSnapshot(ctx, options) {
     caps: collectCapabilities(ctx),
     policy,
     autoPaused,
+    questions,
+    stream: { seen: eventStream.seen, lastAt: eventStream.lastAt, lastType: eventStream.lastType },
     counts,
     attention,
     flights: options.lean ? [] : flights,
@@ -1396,6 +1487,19 @@ async function handleRequest(ctx, req, res) {
 }
 
 export function apply(ctx) {
+  // 根 ctx 订阅：宿主的 agent 作用域会过滤事件，挂 agent 内就收不到别的会话。
+  try {
+    ctx.on('session/event', (session, event) => {
+      try {
+        noteSessionEvent(String(session && session.id ? session.id : ''), event)
+      } catch {
+        /* 单条事件解析失败不影响值守 */
+      }
+    })
+  } catch {
+    /* 没有该事件（老宿主）：待答队列保持为空，其它功能不受影响 */
+  }
+
   const route = {
     kind: 'prefix',
     path: API_PREFIX,
@@ -1409,4 +1513,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts, noteSessionEvent, listPendingQuestions, PENDING_QUESTION_TTL }

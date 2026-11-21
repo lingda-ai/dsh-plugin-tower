@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-tower",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Tower: a local control tower for live agents in the right sidebar — goals, background jobs, schedules and the interventions they need.",
   "author": "LingDaAi (lingda-ai)",
   "repository": {
