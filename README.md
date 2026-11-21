@@ -125,3 +125,15 @@ node test/route.mjs   # 9 条：方法门、同源门、body 门、405 Allow
 
 定位、竞品、定价与路线见 [`docs/product-brief.md`](docs/product-brief.md)。
 实机验证记录与未验证边界见 [`docs/verification.md`](docs/verification.md)。
+
+## 文档
+
+按这个顺序读：
+
+| 文档 | 回答什么 |
+|---|---|
+| [`docs/product-brief.md`](docs/product-brief.md) | **为什么是这个方向**：第一性原理、证据链、竞品矩阵、被否掉的四个方向 |
+| [`docs/product-plan.md`](docs/product-plan.md) | **产品怎么长**：四层能力（观察/提醒/治理/审计）、设计原则、状态模型、v0.2–v2.0 路线与验收 |
+| [`docs/business-case.md`](docs/business-case.md) | **值不值得做**：生态分发实测、市场测算、四种收入模型取舍、定价、盈亏平衡、90 天验证与 kill 标准 |
+| [`docs/verification.md`](docs/verification.md) | **哪些已证明、哪些没有**：实机验证记录与未验证清单 |
+
