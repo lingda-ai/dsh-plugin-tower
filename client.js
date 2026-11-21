@@ -51,6 +51,14 @@ window.__ModuleLoader__.load({
         'empty.attention': '没有需要你判断的事。',
         'empty.jobs': '没有正在跑的后台作业。',
         'empty.schedules': '没有定时任务。',
+        'empty.flights.hint': '让它跑起来，这里才有得值守。三种方式立刻见效：',
+        'empty.flights.t1': '① 说「给这件事建一个目标」→ 出现目标卡、轮次与暂停/完成',
+        'empty.flights.t2': '② 让它跑一个耗时命令 → 出现后台作业与「终止」',
+        'empty.flights.t3': '③ 说「每天 9 点提醒我」→ 出现定时航班与「立即执行」',
+        'flights.hint.goal': '还没有目标：对 agent 说「给这件事建一个目标」，就能在这里看到轮次并随时暂停。',
+        'flight.turns': '第 {n} 轮',
+        'flight.age': '已运行 {when}',
+        'flight.failedJobs': '{n} 个失败',
         'phase.active': '执行中',
         'phase.paused': '已暂停',
         'phase.blocked': '受阻',
@@ -104,6 +112,14 @@ window.__ModuleLoader__.load({
         'empty.attention': 'Nothing needs your judgement.',
         'empty.jobs': 'No background job is running.',
         'empty.schedules': 'No scheduled task.',
+        'empty.flights.hint': 'Start something and there is work to watch. Three ways to see it immediately:',
+        'empty.flights.t1': '① Say “create a goal for this” → a goal card with rounds, pause and complete',
+        'empty.flights.t2': '② Ask for a long command → a background job with “Kill”',
+        'empty.flights.t3': '③ Say “remind me at 9am daily” → a schedule with “Run now”',
+        'flights.hint.goal': 'No goal yet: tell the agent “create a goal for this” to see rounds here and pause anytime.',
+        'flight.turns': 'turn {n}',
+        'flight.age': 'up {when}',
+        'flight.failedJobs': '{n} failed',
         'phase.active': 'Active',
         'phase.paused': 'Paused',
         'phase.blocked': 'Blocked',
@@ -209,6 +225,14 @@ window.__ModuleLoader__.load({
       if (!Number.isFinite(at)) return '—'
       if (at <= now) return t('sched.next', { when: '0s' })
       return t('sched.next', { when: formatElapsed(now, at) })
+    }
+
+    function flightMetaParts(flight, now, t) {
+      const parts = []
+      if (flight.agentPreset) parts.push(String(flight.agentPreset))
+      if (flight.turn > 0) parts.push(t('flight.turns', { n: flight.turn }))
+      if (flight.createdAt) parts.push(t('flight.age', { when: formatElapsed(flight.createdAt, now) }))
+      return parts
     }
 
     function formatBytes(bytes) {
@@ -482,6 +506,35 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function EmptyGuide(props) {
+      const t = props.t
+      const steps = [t('empty.flights.t1'), t('empty.flights.t2'), t('empty.flights.t3')]
+      return h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            padding: '18px 12px 20px',
+            border: '1px dashed ' + HAIRLINE,
+            borderRadius: 8,
+            background: WASH,
+          },
+        },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 6, color: MUTED, fontSize: 12 } },
+          h(Glyph, { size: 15 }),
+          h('span', { style: { fontWeight: 600 } }, t('empty.flights.title')),
+        ),
+        h('div', { style: { fontSize: 11, color: FAINT, lineHeight: 1.6, marginTop: 2 } }, t('empty.flights.hint')),
+        ...steps.map((line, index) =>
+          h('div', { key: index, style: { fontSize: 11, color: MUTED, lineHeight: 1.6 } }, line),
+        ),
+      )
+    }
+
     function Empty(props) {
       return h(
         'div',
@@ -682,9 +735,10 @@ window.__ModuleLoader__.load({
                 : null,
             liveJobs.length > 0 ? h('span', null, t('flight.jobs', { n: liveJobs.length })) : null,
             failedJobs.length > 0
-              ? h('span', { style: { color: RED } }, failedJobs.length + ' 失败')
+              ? h('span', { style: { color: RED } }, t('flight.failedJobs', { n: failedJobs.length }))
               : null,
-            flight.running && flight.turn > 0 ? h('span', null, '· #' + flight.turn) : null,
+            h('span', { style: { flex: 1 } }),
+            h('span', { style: { color: FAINT, whiteSpace: 'nowrap' } }, flightMetaParts(flight, now, t).join(' · ')),
           ),
           h(
             'div',
@@ -862,6 +916,8 @@ window.__ModuleLoader__.load({
               height: '100%',
               minWidth: 0,
               minHeight: 0,
+              boxSizing: 'border-box',
+              overflow: 'hidden',
               fontSize: 12,
               color: 'inherit',
             },
@@ -1052,13 +1108,22 @@ window.__ModuleLoader__.load({
             h(
               Section,
               { title: t('section.flights'), count: snapshot.flights.length },
-              snapshot.flights.length === 0
-                ? snapshot.loading || !snapshot.at
-                  ? h('div', { style: { fontSize: 11, color: FAINT, padding: '6px 0' } }, '…')
-                  : h(Empty, { title: t('empty.flights.title'), body: t('empty.flights.body') })
-                : snapshot.flights.map((flight) =>
-                    h(FlightCard, { key: flight.sessionId, flight, now, action }),
-                  ),
+              [
+                snapshot.flights.length === 0
+                  ? snapshot.loading || !snapshot.at
+                    ? h('div', { style: { fontSize: 11, color: FAINT, padding: '6px 0' } }, '…')
+                    : h(EmptyGuide, { t })
+                  : snapshot.flights.map((flight) =>
+                      h(FlightCard, { key: flight.sessionId, flight, now, action }),
+                    ),
+                snapshot.flights.length > 0 && counts.goals === 0
+                  ? h(
+                      'div',
+                      { style: { fontSize: 10, lineHeight: 1.6, color: FAINT, padding: '2px 0 0' } },
+                      t('flights.hint.goal'),
+                    )
+                  : null,
+              ],
             ),
 
             // ③ 后台
