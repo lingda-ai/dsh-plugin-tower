@@ -88,6 +88,10 @@ window.__ModuleLoader__.load({
         'flight.idle': '等待输入',
         'flight.jobs': '{n} 个后台作业',
         'flight.subagent': '子代理',
+        'flight.noGoalChip': '无目标',
+        'act.newGoal': '建目标',
+        'hint.keys': '↑↓ 或 j/k 选择 · Enter 打开',
+        'hint.copied': '已复制',
         'act.open': '打开会话',
         'act.pause': '暂停',
         'act.resume': '继续',
@@ -168,6 +172,10 @@ window.__ModuleLoader__.load({
         'flight.idle': 'Idle',
         'flight.jobs': '{n} job(s)',
         'flight.subagent': 'Subagent',
+        'flight.noGoalChip': 'no goal',
+        'act.newGoal': 'New goal',
+        'hint.keys': '↑↓ or j/k to move · Enter to open',
+        'hint.copied': 'copied',
         'act.open': 'Open session',
         'act.pause': 'Pause',
         'act.resume': 'Resume',
@@ -331,7 +339,7 @@ window.__ModuleLoader__.load({
      */
     const CSS = `
 .twr-root, .twr-root * { box-sizing: border-box; }
-.twr-root { container-type: inline-size; container-name: twr; }
+.twr-root:focus-visible { outline: 2px solid ${T.brand}; outline-offset: -2px; border-radius: 8px; }
 .twr-root ::-webkit-scrollbar { width: 8px; height: 8px; }
 .twr-root ::-webkit-scrollbar-thumb { background: color-mix(in srgb, currentColor 18%, transparent); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
 .twr-root ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, currentColor 28%, transparent); background-clip: padding-box; }
@@ -380,8 +388,8 @@ window.__ModuleLoader__.load({
 .twr-scope > button[data-on="1"] { background: ${T.surface}; color: ${T.text}; box-shadow: 0 1px 2px color-mix(in srgb, currentColor 14%, transparent); }
 .twr-scope > button:focus-visible { outline: 2px solid ${T.brand}; outline-offset: 0; }
 
-.twr-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-@container twr (min-width: 680px) { .twr-grid { grid-template-columns: 1fr 1fr; } }
+.twr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; align-items: start; }
+.twr-card--focus { border-color: ${T.brand}; box-shadow: 0 0 0 1px ${T.brand}; }
 
 .twr-hint { display: flex; align-items: flex-start; gap: 7px; width: 100%; text-align: left;
   border: 1px dashed ${T.border}; border-radius: 8px; background: transparent; padding: 7px 9px;
@@ -895,6 +903,8 @@ window.__ModuleLoader__.load({
         const action = props.action
         const now = props.now
         const current = props.current
+        const focused = props.focused
+        const onNewGoal = props.onNewGoal
         const goal = flight.goal
         const liveJobs = flight.jobs.filter((job) => job.status === 'running' || job.status === 'stopping')
         const failedJobs = flight.jobs.filter((job) => job.status === 'failed')
@@ -904,7 +914,7 @@ window.__ModuleLoader__.load({
 
         return h(
           'article',
-          { className: 'twr-card' },
+          { className: 'twr-card' + (focused ? ' twr-card--focus' : '') },
           h(
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 } },
@@ -919,16 +929,15 @@ window.__ModuleLoader__.load({
             h('span', { style: { flex: 1 } }),
             h('span', { className: 'twr-num', style: { fontSize: 10, color: T.faint } }, flight.short),
           ),
-          goal
-            ? h(GoalLine, { goal, now })
-            : h('div', { style: { fontSize: 11, color: T.faint } }, t('flight.noGoal')),
+          goal ? h(GoalLine, { goal, now }) : null,
           h(
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: 10, color: T.text2 } },
             flight.running ? h(Chip, { color: T.ok }, t('flight.running')) : null,
-            goal && !flight.running && goal.phase !== 'complete'
+            !flight.running && goal && goal.phase !== 'complete'
               ? h(Chip, { color: phaseColor(goal.phase) }, t('phase.' + goal.phase))
               : null,
+            !goal ? h(Chip, { color: T.idle }, t('flight.noGoalChip')) : null,
             liveJobs.length > 0 ? h('span', null, t('flight.jobs', { n: liveJobs.length })) : null,
             failedJobs.length > 0 ? h('span', { style: { color: T.bad } }, t('flight.failedJobs', { n: failedJobs.length })) : null,
             h('span', { style: { flex: 1 } }),
@@ -938,6 +947,7 @@ window.__ModuleLoader__.load({
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 1 } },
             h(Button, { tone: 'ghost', onClick: () => openSession(flight.sessionId) }, t('act.open')),
+            !goal ? h(Button, { onClick: onNewGoal }, t('act.newGoal')) : null,
             goal && goal.phase === 'active' && goal.activation === 'armed'
               ? h(
                   Button,
@@ -1079,6 +1089,7 @@ window.__ModuleLoader__.load({
         const [schedulesOpen, setSchedulesOpen] = React.useState(null)
         const [refreshing, setRefreshing] = React.useState(false)
         const [logs, setLogs] = React.useState({})
+        const [cursor, setCursor] = React.useState(-1)
 
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
@@ -1197,6 +1208,48 @@ window.__ModuleLoader__.load({
           { key: 'schedules', value: counts.schedules, color: T.text },
         ]
 
+        const statNodes = []
+        statItems.forEach((stat, index) => {
+          if (index > 0) statNodes.push(h('span', { key: 'sep' + index, style: { color: T.faint } }, '·'))
+          statNodes.push(
+            h(
+              'span',
+              { key: stat.key, style: { display: 'inline-flex', alignItems: 'baseline', gap: 3, whiteSpace: 'nowrap' } },
+              h(
+                'span',
+                {
+                  className: 'twr-num',
+                  style: { fontSize: 12, fontWeight: 600, color: stat.value > 0 ? stat.color : T.faint },
+                },
+                String(stat.value),
+              ),
+              h('span', { style: { color: T.faint } }, t('strip.' + stat.key)),
+            ),
+          )
+        })
+
+        // 键盘只在面板获得焦点时生效（不劫持输入框里的 j/k）
+        function onKeyDown(event) {
+          if (event.key === 'j' || event.key === 'ArrowDown') {
+            if (flights.length === 0) return
+            event.preventDefault()
+            setCursor((value) => Math.min(flights.length - 1, value + 1))
+            return
+          }
+          if (event.key === 'k' || event.key === 'ArrowUp') {
+            if (flights.length === 0) return
+            event.preventDefault()
+            setCursor((value) => Math.max(0, value - 1))
+            return
+          }
+          if (event.key === 'Enter' && cursor >= 0 && flights[cursor]) {
+            event.preventDefault()
+            openSession(flights[cursor].sessionId)
+            return
+          }
+          if (event.key === 'Escape') setCursor(-1)
+        }
+
         return h(
           React.Fragment,
           null,
@@ -1205,6 +1258,9 @@ window.__ModuleLoader__.load({
             'div',
             {
               className: 'twr-root',
+              tabIndex: 0,
+              onKeyDown,
+              'aria-label': t('title'),
               style: {
                 display: 'flex',
                 flexDirection: 'column',
@@ -1277,28 +1333,11 @@ window.__ModuleLoader__.load({
                     ),
                   )
                 : null,
+              showScope ? null : h('span', { style: { fontSize: 10.5, color: T.faint } }, t('scope.all')),
               h(
                 'div',
-                { style: { display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', fontSize: 10.5, color: T.text2 } },
-                statItems.map((stat) =>
-                  h(
-                    'span',
-                    { key: stat.key, style: { display: 'inline-flex', alignItems: 'baseline', gap: 3, whiteSpace: 'nowrap' } },
-                    h(
-                      'span',
-                      {
-                        className: 'twr-num',
-                        style: {
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: stat.value > 0 ? stat.color : T.faint,
-                        },
-                      },
-                      String(stat.value),
-                    ),
-                    h('span', { style: { color: T.faint } }, t('strip.' + stat.key)),
-                  ),
-                ),
+                { style: { display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: 10.5, color: T.text2 } },
+                statNodes,
               ),
             ),
             // 主体
@@ -1385,7 +1424,15 @@ window.__ModuleLoader__.load({
               // ② 航班
               h(
                 Section,
-                { title: t('section.flights'), count: flights.length, kind: 'flights' },
+                {
+                  title: t('section.flights'),
+                  count: flights.length,
+                  kind: 'flights',
+                  trailing:
+                    flights.length > 1
+                      ? h('span', { style: { fontSize: 9.5, color: T.faint, whiteSpace: 'nowrap' } }, t('hint.keys'))
+                      : null,
+                },
                 flights.length === 0
                   ? loading
                     ? null
@@ -1393,12 +1440,14 @@ window.__ModuleLoader__.load({
                   : h(
                       'div',
                       { className: 'twr-grid' },
-                      flights.map((flight) =>
+                      flights.map((flight, index) =>
                         h(FlightCard, {
                           key: flight.sessionId,
                           flight,
                           now,
                           action,
+                          focused: cursor === index,
+                          onNewGoal: () => onCopy('goal:' + flight.sessionId, t('empty.flights.p1')),
                           current: Boolean(ownSession) && flight.sessionId === ownSession,
                         }),
                       ),
@@ -1832,6 +1881,8 @@ window.__ModuleLoader__.load({
     return {
       inject: ['sidebarRightTabs'],
       apply,
+      // 仅供离线测试使用：不参与宿主装配。
+      __test: { makePanel, makeTitle, makeEntry, makeT, createStore },
     }
   },
 })

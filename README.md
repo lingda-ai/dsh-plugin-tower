@@ -96,6 +96,8 @@ POST body 与动作：
 - **空态即入口**：三条起手式可一键复制，粘到输入框就能让面板立刻有东西可看。
 - **稍后处理**：待处置项可「稍后 30 分钟」，只存本机 localStorage，不产生任何服务端状态。
 - **渲染边界**：面板内部异常收敛成可读错误 + 重试，不会白屏（白屏会让人以为宿主坏了）。
+- **卡片宽度收敛**：栅格用 `repeat(auto-fill, minmax(300px, 1fr))`，单张卡不会被拉成空盒子。
+- **面板内键盘**：`↑↓` / `j k` 移动，「Enter」打开会话，「Esc」取消；只在面板获得焦点时生效，不劫持输入框。
 - 悬停、焦点环、滚动条、骨架屏、减少动效偏好，全部走真实 CSS（组件内 `<style>`，`.twr-` 前缀）。
 
 ## 数据来源（全部为宿主既有服务）
@@ -129,6 +131,7 @@ node --check index.js && node --check client.js
 node test/smoke.mjs   # 21 条：快照投影、过滤、计数、排序、动作分发、全服务缺失降级
 node test/route.mjs   # 9 条：方法门、同源门、body 门、405 Allow
 node test/wiring.mjs  # 14 条：客户端模块装配（tab 类型 + 三个 seat + 渲染边界）
+node test/render.mjs  # 22 条：用玩具 React 整棵渲染（有数据 + 空态），抓渲染期崩溃
 ```
 
 `index.js` 的 `__internal` 只服务这两个离线测试，不参与宿主装配。
