@@ -36,7 +36,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `GET ?report=1&hours=24` | 值守报告：`markdown` + `generatedAt` + `windowHours` |
 | `GET ?report=1&format=html&hours=24` | 同一份报告的**单文件网页**（内联样式、无外部依赖），带下载文件名 |
 | `GET ?audit=1` / `?audit=1&verify=1` / `?audit=1&download=1` | 审计状态 / 重算哈希链 / 导出 ndjson |
-| `POST {"action": …}` | `goal.pause\|resume\|complete`、`job.kill`、`schedule.run`、`audit.enable\|disable` |
+| `POST {"action": …}` | `goal.create\|pause\|resume\|complete`、`job.kill`、`schedule.run`、`audit.enable\|disable` |
 
 失败语义：HTTP 状态只表达传输层（200/400/403/405/500），业务失败一律 `200 + {ok:false, error}`，
 错误文案直接可读（中文）。动作带 `revision` 做乐观并发，冲突原样回传。
@@ -68,6 +68,8 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 6. **渲染兜底**：面板内部异常收敛成可读错误 + 重试，不白屏。
 8. **预览自己渲染**：面板用组件内的小渲染器把报告 Markdown 排成 h2/列表/加粗，**不引第三方 Markdown 库**
    （只覆盖报告自己的语法，顺带避免 XSS 面）。
+10. **破坏性动作两段确认**：`goal.complete` / `job.kill` 第一次点击只"上膛"（4 秒后自动取消），
+    第二次才发请求；每次成功动作同时进「最近处置」与审计。
 9. **策略分层**：`内置默认 ← 本机(policy.json) ← 团队(TOWER_POLICY)`。
    团队层只覆盖显式键，嵌套对象按子键合并；来源与解析失败都进快照（`policySources` / `policyWarnings`），
    面板页脚与报告都会显示——「用的是谁的规则」必须是可见事实，不是猜测。
@@ -92,6 +94,8 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `test/questions.mjs` | 待答队列：折叠 / 收口 / 兜底清除 / TTL / 只对在跑会话生效 |
 | `test/markdown.mjs` | 报告预览渲染：标题/列表/加粗/无残留记号/尖括号转义 |
 | `test/team-policy.mjs` | 团队策略合并：同名键覆盖 / 子键保留 / 越界夹取 / 坏文件告警 / 来源入快照 |
+| `test/actions.mjs` | 目标创建：真调用 / 去空白 / 轮次夹取 / 非法输入拒绝 / 能力位 |
+| `test/audit-rotate.mjs` | 审计轮转：超限转 .1、单文件上界、轮转后链仍可校验 |
 | `test/ledger-bridge.mjs` | 账本可选集成：缺席 / 坏文件 / 多币种 / 双模 / 静态隔离守卫 |
 
 ```bash

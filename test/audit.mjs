@@ -66,5 +66,13 @@ assert(off.ok === true && off.result.enabled === false, '关闭成功')
 __internal.appendAudit({ at: 3000, verb: 'pause', sessionId: 's1', label: 'close', outcome: 'ok' })
 assert(__internal.auditStatus().count === 2, '关闭后不再追加')
 
+// 操作者：团队里至少能分清是哪台机器（必须在清理之前读）
+const auditLines = readFileSync(status.path, 'utf8').trim().split('\n')
+const lastRecord = JSON.parse(auditLines[auditLines.length - 1])
+assert(lastRecord.v === 2, '记录带版本号 v2（哈希口径）')
+assert(lastRecord.actor && typeof lastRecord.actor.user === 'string' && typeof lastRecord.actor.host === 'string', '记录带操作者（用户@主机）')
+assert(__internal.auditStatus().actor && __internal.auditStatus().actor.host.length > 0, '状态里也暴露操作者')
+
 rmSync(sandbox, { recursive: true, force: true })
+
 console.log(process.exitCode ? '\nAUDIT FAILED' : '\nAUDIT PASSED')

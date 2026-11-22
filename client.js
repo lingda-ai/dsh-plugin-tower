@@ -151,6 +151,12 @@ window.__ModuleLoader__.load({
         'flight.subagent': '子代理',
         'flight.noGoalChip': '无目标',
         'act.newGoal': '建目标',
+        'act.newGoalHint': '想让它继续做什么',
+        'act.newGoalCreate': '创建',
+        'act.copyGoalPrompt': '复制建目标指令',
+        'act.cancel': '取消',
+        'act.confirmComplete': '确认完成？',
+        'act.confirmKill': '确认终止？',
         'hint.keys': '↑↓ 或 j/k 选择 · Enter 打开',
         'act.notify': '通知',
         'act.notifyOn': '通知已开',
@@ -304,6 +310,12 @@ window.__ModuleLoader__.load({
         'flight.subagent': 'Subagent',
         'flight.noGoalChip': 'no goal',
         'act.newGoal': 'New goal',
+        'act.newGoalHint': 'What should it keep doing?',
+        'act.newGoalCreate': 'Create',
+        'act.copyGoalPrompt': 'Copy goal prompt',
+        'act.cancel': 'Cancel',
+        'act.confirmComplete': 'Confirm done?',
+        'act.confirmKill': 'Confirm kill?',
         'hint.keys': '↑↓ or j/k to move · Enter to open',
         'act.notify': 'Notify',
         'act.notifyOn': 'Notify on',
@@ -1234,7 +1246,16 @@ window.__ModuleLoader__.load({
         const now = props.now
         const current = props.current
         const focused = props.focused
-        const onNewGoal = props.onNewGoal
+        const armed = props.armed
+        const requestConfirm = props.requestConfirm
+        const canCreate = props.canCreate
+        const creating = props.createFor === flight.sessionId
+        const objective = props.objective
+        const onStartCreate = props.onStartCreate
+        const onChangeObjective = props.onChangeObjective
+        const onCancelCreate = props.onCancelCreate
+        const onCreate = props.onCreate
+        const onCopyGoalPrompt = props.onCopyGoalPrompt
         const goal = flight.goal
         const liveJobs = flight.jobs.filter((job) => job.status === 'running' || job.status === 'stopping')
         const failedJobs = flight.jobs.filter((job) => job.status === 'failed')
@@ -1279,7 +1300,38 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'twr-card__actions', style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 1 } },
             h(Button, { tone: 'ghost', onClick: () => openSession(flight.sessionId) }, t('act.open')),
-            !goal ? h(Button, { onClick: onNewGoal }, t('act.newGoal')) : null,
+            !goal && canCreate && !creating ? h(Button, { onClick: onStartCreate }, t('act.newGoal')) : null,
+            // 老宿主没有 goals.create：不退化成"假装建目标"，而是明说只能复制指令
+            !goal && !canCreate ? h(Button, { onClick: onCopyGoalPrompt }, t('act.copyGoalPrompt')) : null,
+            !goal && creating
+              ? h(
+                  'div',
+                  { style: { display: 'flex', gap: 4, flex: '1 1 100%', marginTop: 2 } },
+                  h('input', {
+                    value: objective,
+                    autoFocus: true,
+                    placeholder: t('act.newGoalHint'),
+                    onChange: (event) => onChangeObjective(event.target.value),
+                    onKeyDown: (event) => {
+                      if (event.key === 'Enter') onCreate()
+                      if (event.key === 'Escape') onCancelCreate()
+                    },
+                    style: {
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 11,
+                      padding: '3px 6px',
+                      borderRadius: 6,
+                      border: '1px solid ' + T.border,
+                      background: T.surface,
+                      color: T.text,
+                      outline: 'none',
+                    },
+                  }),
+                  h(Button, { tone: 'accent', disabled: String(objective || '').trim().length === 0, onClick: onCreate }, t('act.newGoalCreate')),
+                  h(Button, { tone: 'ghost', onClick: onCancelCreate }, t('act.cancel')),
+                )
+              : null,
             goal && goal.phase === 'active' && goal.activation === 'armed'
               ? h(
                   Button,
@@ -1319,14 +1371,16 @@ window.__ModuleLoader__.load({
                     tone: 'accent',
                     disabled: busy,
                     onClick: () =>
-                      action.run(goalKey + 'complete', {
-                        action: 'goal.complete',
-                        sessionId: flight.sessionId,
-                        goalId: goal.id,
-                        revision: goal.revision,
-                      }),
+                      requestConfirm(goalKey + 'complete', () =>
+                        action.run(goalKey + 'complete', {
+                          action: 'goal.complete',
+                          sessionId: flight.sessionId,
+                          goalId: goal.id,
+                          revision: goal.revision,
+                        }),
+                      ),
                   },
-                  t('act.complete'),
+                  armed === goalKey + 'complete' ? t('act.confirmComplete') : t('act.complete'),
                 )
               : null,
           ),
@@ -1394,9 +1448,12 @@ window.__ModuleLoader__.load({
                   {
                     tone: 'danger',
                     disabled: action.pending === jobKey,
-                    onClick: () => action.run(jobKey, { action: 'job.kill', jobId: item.jobId, sessionId: item.sessionId }),
+                    onClick: () =>
+                      props.requestConfirm(jobKey, () =>
+                        action.run(jobKey, { action: 'job.kill', jobId: item.jobId, sessionId: item.sessionId }),
+                      ),
                   },
-                  t('act.kill'),
+                  props.armed === jobKey ? t('act.confirmKill') : t('act.kill'),
                 )
               : null,
             h(Button, { tone: 'ghost', onClick: () => props.onOpen(item.sessionId) }, t('act.open')),
@@ -1422,6 +1479,26 @@ window.__ModuleLoader__.load({
         const [refreshing, setRefreshing] = React.useState(false)
         const [logs, setLogs] = React.useState({})
         const [cursor, setCursor] = React.useState(-1)
+        // 破坏性动作两段确认：第一下上膛，4 秒内再点才执行
+        const [armed, setArmed] = React.useState('')
+        const armTimer = React.useRef(null)
+        const requestConfirm = React.useCallback(
+          (key, run) => {
+            if (armed === key) {
+              setArmed('')
+              if (armTimer.current) clearTimeout(armTimer.current)
+              run()
+              return
+            }
+            setArmed(key)
+            if (armTimer.current) clearTimeout(armTimer.current)
+            armTimer.current = setTimeout(() => setArmed(''), 4000)
+          },
+          [armed],
+        )
+        // 建目标：行内输入，不再只往剪贴板塞一句话
+        const [createFor, setCreateFor] = React.useState('')
+        const [objective, setObjective] = React.useState('')
         const [capsOpen, setCapsOpen] = React.useState(false)
         const [closed, setClosed] = React.useState({ loading: false, rows: [], error: '', loaded: false })
         const [notifyOn, setNotifyOn] = React.useState(readNotifyOn)
@@ -2055,6 +2132,8 @@ window.__ModuleLoader__.load({
                         onOpen: openSession,
                         onSnooze: snoozeItem,
                         goal: goalBySession[item.sessionId],
+                        armed,
+                        requestConfirm,
                       }),
                     ),
                   )
@@ -2086,7 +2165,32 @@ window.__ModuleLoader__.load({
                           now,
                           action,
                           focused: cursor === index,
-                          onNewGoal: () => onCopy('goal:' + flight.sessionId, t('empty.flights.p1')),
+                          armed,
+                          requestConfirm,
+                          canCreate: Boolean(snapshot.caps && snapshot.caps.goalCreate),
+                          createFor,
+                          objective,
+                          onStartCreate: () => {
+                            setCreateFor(flight.sessionId)
+                            setObjective('')
+                          },
+                          onChangeObjective: setObjective,
+                          onCancelCreate: () => {
+                            setCreateFor('')
+                            setObjective('')
+                          },
+                          onCopyGoalPrompt: () => onCopy('goal:' + flight.sessionId, t('empty.flights.p1')),
+                          onCreate: () => {
+                            const text = String(objective || '').trim()
+                            if (text.length === 0) return
+                            action.run('goal:create:' + flight.sessionId, {
+                              action: 'goal.create',
+                              sessionId: flight.sessionId,
+                              objective: text,
+                            })
+                            setCreateFor('')
+                            setObjective('')
+                          },
                           current: Boolean(ownSession) && flight.sessionId === ownSession,
                         }),
                       ),

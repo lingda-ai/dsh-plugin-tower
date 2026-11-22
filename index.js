@@ -14,9 +14,9 @@
 
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
-import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync, readdirSync } from 'node:fs'
+import { userInfo, hostname, homedir } from 'node:os'
+import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync, readdirSync, renameSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { homedir } from 'node:os'
 
 const API_PREFIX = '/dsh-tower/api'
 
@@ -644,10 +644,48 @@ function writeAuditState(state) {
   }
 }
 
+/** 本机操作者：单机单人时够用，团队里至少能分清是哪台机器。 */
+const AUDIT_ACTOR = (() => {
+  try {
+    return { user: userInfo().username, host: hostname() }
+  } catch {
+    return { user: '', host: '' }
+  }
+})()
+
+function actorOf(record) {
+  const actor = record && record.actor
+  if (!actor || typeof actor !== 'object') return ''
+  return String(actor.user || '') + '@' + String(actor.host || '')
+}
+
+/**
+ * 哈希口径带版本：v2 起把 actor 也纳入，v1 老记录按原口径校验。
+ * 不这么做，要么老日志全部校验失败，要么「谁」可以随便改而链不报。
+ */
 function auditHash(prev, record) {
-  return createHash('sha256')
-    .update([prev, record.seq, record.at, record.verb, record.sessionId, record.label, record.outcome].join('|'))
-    .digest('hex')
+  const fields = [prev, record.seq, record.at, record.verb, record.sessionId, record.label, record.outcome]
+  if (Number(record.v) >= 2) fields.push(actorOf(record))
+  return createHash('sha256').update(fields.join('|')).digest('hex')
+}
+
+/** 审计单文件上限；超过就轮转到 .1（只留一份备份，避免无限增长）。 */
+const AUDIT_MAX_BYTES = (() => {
+  const raw = Number(process.env.TOWER_AUDIT_MAX_BYTES)
+  return Number.isFinite(raw) && raw > 0 ? raw : 5 * 1024 * 1024
+})()
+
+/** 轮转：把当前日志挪成 .1 并重开一条链。链是「每文件一条」，不跨文件续接。 */
+function rotateAuditIfNeeded() {
+  try {
+    const stat = statSync(AUDIT_LOG_FILE)
+    if (stat.size < AUDIT_MAX_BYTES) return false
+    renameSync(AUDIT_LOG_FILE, AUDIT_LOG_FILE + '.1')
+    auditHeadCache = { seq: 0, hash: '' }
+    return true
+  } catch {
+    return false
+  }
 }
 
 function auditHead() {
@@ -671,15 +709,20 @@ function auditHead() {
 function appendAudit(entry) {
   if (!readAuditState().enabled) return
   const head = auditHead()
+  rotateAuditIfNeeded()
+  const rotatedHead = auditHead()
   const record = {
-    seq: head.seq + 1,
+    v: 2,
+    seq: rotatedHead.seq + 1,
     at: Number(entry.at) || Date.now(),
     verb: String(entry.verb || ''),
     sessionId: String(entry.sessionId || ''),
     label: String(entry.label || ''),
     outcome: String(entry.outcome || 'ok'),
-    prev: head.hash,
+    actor: AUDIT_ACTOR,
+    prev: rotatedHead.hash,
   }
+  record.hash = auditHash(record.prev, record)
   record.hash = auditHash(record.prev, record)
   try {
     mkdirSync(AUDIT_DIR, { recursive: true })
@@ -704,7 +747,13 @@ function auditStatus() {
   } catch {
     /* 没有日志就是 0 条 */
   }
-  return { enabled: Boolean(state.enabled), path: AUDIT_LOG_FILE, count, head }
+  let bytes = 0
+  try {
+    bytes = statSync(AUDIT_LOG_FILE).size
+  } catch {
+    bytes = 0
+  }
+  return { enabled: Boolean(state.enabled), path: AUDIT_LOG_FILE, count, head, bytes, maxBytes: AUDIT_MAX_BYTES, actor: AUDIT_ACTOR }
 }
 
 function auditDownload() {
@@ -1077,6 +1126,7 @@ function collectCapabilities(ctx) {
   return {
     agents: hasMethods(ctx, 'agents', ['list']),
     goals: hasMethods(ctx, 'goals', ['get', 'pause', 'resume', 'complete']),
+    goalCreate: hasMethods(ctx, 'goals', ['create']),
     jobs: hasMethods(ctx, 'jobs', ['list', 'kill']),
     log: hasMethods(ctx, 'jobs', ['get', 'readAt']),
     schedule: hasMethods(ctx, 'schedule', ['catalog']),
@@ -1478,6 +1528,25 @@ async function handleAction(ctx, body) {
         label: text(view && view.objective, 80),
         outcome: 'ok',
       })
+      return { ok: true, result: projectGoal(view) }
+    } catch (error) {
+      return { ok: false, error: String(error && error.message ? error.message : error) }
+    }
+  }
+
+  if (action === 'goal.create') {
+    const goalsSvc = service(ctx, 'goals')
+    const objective = String(body?.objective ?? '').trim()
+    if (!agent) return { ok: false, error: '该会话已不在运行' }
+    if (typeof goalsSvc?.create !== 'function') return { ok: false, error: '宿主不支持创建目标' }
+    if (objective.length === 0) return { ok: false, error: '目标内容不能为空' }
+    if (objective.length > 500) return { ok: false, error: '目标内容过长（上限 500 字）' }
+    const request = { objective }
+    const rounds = Number(body?.maxGoalRounds)
+    if (Number.isFinite(rounds) && rounds > 0) request.maxGoalRounds = Math.min(50, Math.max(1, Math.round(rounds)))
+    try {
+      const view = goalsSvc.create(agent, request)
+      recordAction({ at: Date.now(), verb: 'create', sessionId, label: text(view && view.objective, 80), outcome: 'ok' })
       return { ok: true, result: projectGoal(view) }
     } catch (error) {
       return { ok: false, error: String(error && error.message ? error.message : error) }

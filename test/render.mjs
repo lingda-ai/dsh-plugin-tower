@@ -134,7 +134,7 @@ const snapshot = {
   error: '',
   at: now,
   version: '0.1.6',
-  caps: { agents: true, goals: true, jobs: true, log: true, schedule: true, sessions: true },
+  caps: { agents: true, goals: true, goalCreate: true, jobs: true, log: true, schedule: true, sessions: true },
   policy: { idleMinutes: 20, historyHours: 24, historyLimit: 20, notifyOnlyUrgent: true, autoPauseEnabled: false, autoPauseAfterMinutes: 45 },
   counts: { live: 3, running: 1, goals: 1, urgent: 1, waiting: 1, jobs: 2, schedules: 1 },
   attention: [
