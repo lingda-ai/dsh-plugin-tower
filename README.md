@@ -104,6 +104,17 @@ dsh plugin --profile <你的 profile> add dsh-plugin-tower
 `autoPause` **默认关闭**。开启后，只有「目标处于执行中 + 当前没在跑 + 超过阈值没有事件」才会被暂停，
 且每次动作都会记进处置历史与审计（`verb=auto-pause`），不会静默改动。
 
+**团队共享策略**（可选）：把一份 `policy.json` 放进受版本控制的仓库，用环境变量指过去：
+
+```bash
+export TOWER_POLICY=~/code/ops/.tower/policy.json
+```
+
+合并顺序是 **内置默认 ← 本机 ← 团队**：团队文件只覆盖它显式写了的键，
+个人没被覆盖的偏好（比如通知开关）保持不变；嵌套对象按子键合并（`autoPause.enabled`
+团队改、`afterIdleMinutes` 仍用本机）。
+两个文件都解析失败时不会静默——面板页脚会出现「策略有警告」，报告里也会写明来源与失败原因。
+
 ## 数据与隐私
 
 - 只读：除了你点击的三个动作，不改任何状态；

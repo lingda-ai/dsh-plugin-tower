@@ -68,6 +68,9 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 6. **渲染兜底**：面板内部异常收敛成可读错误 + 重试，不白屏。
 8. **预览自己渲染**：面板用组件内的小渲染器把报告 Markdown 排成 h2/列表/加粗，**不引第三方 Markdown 库**
    （只覆盖报告自己的语法，顺带避免 XSS 面）。
+9. **策略分层**：`内置默认 ← 本机(policy.json) ← 团队(TOWER_POLICY)`。
+   团队层只覆盖显式键，嵌套对象按子键合并；来源与解析失败都进快照（`policySources` / `policyWarnings`），
+   面板页脚与报告都会显示——「用的是谁的规则」必须是可见事实，不是猜测。
 7. **待答靠事件推断**：宿主没有待答只读接口，改从会话事件流配对（`tool/call` ↔ `tool/result`，`turn/end` 兜底，30 分钟 TTL）。
    快照里的 `stream.{seen,lastAt,lastType}` 是这条通道的自检：`seen>0` 说明订阅真的通了。
 
@@ -88,6 +91,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `test/policy.mjs` | 策略默认值 / 夹取 / 热更新 / 自动暂停 |
 | `test/questions.mjs` | 待答队列：折叠 / 收口 / 兜底清除 / TTL / 只对在跑会话生效 |
 | `test/markdown.mjs` | 报告预览渲染：标题/列表/加粗/无残留记号/尖括号转义 |
+| `test/team-policy.mjs` | 团队策略合并：同名键覆盖 / 子键保留 / 越界夹取 / 坏文件告警 / 来源入快照 |
 | `test/ledger-bridge.mjs` | 账本可选集成：缺席 / 坏文件 / 多币种 / 双模 / 静态隔离守卫 |
 
 ```bash

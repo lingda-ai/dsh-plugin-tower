@@ -15,7 +15,7 @@
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import { mkdirSync, appendFileSync, readFileSync, writeFileSync, statSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 
 const API_PREFIX = '/dsh-tower/api'
@@ -501,7 +501,7 @@ const DEFAULT_POLICY = {
   autoPauseAfterMinutes: 45,
 }
 
-let policyCache = { mtimeMs: -1, value: DEFAULT_POLICY }
+let policyCache = { key: '', value: null }
 
 function clampNumber(value, fallback, min, max) {
   const parsed = Number(value)
@@ -523,17 +523,91 @@ function normalizePolicy(raw) {
   }
 }
 
-function readPolicy() {
+/** 团队共享策略：由 `TOWER_POLICY` 指定绝对路径（可指向仓库里受版本控制的文件）。 */
+const TEAM_POLICY_FILE = (() => {
+  const raw = typeof process.env.TOWER_POLICY === 'string' ? process.env.TOWER_POLICY.trim() : ''
+  if (raw.length === 0) return null
   try {
-    const stat = statSync(POLICY_FILE)
-    if (stat.mtimeMs === policyCache.mtimeMs) return policyCache.value
-    const value = normalizePolicy(JSON.parse(readFileSync(POLICY_FILE, 'utf8')))
-    policyCache = { mtimeMs: stat.mtimeMs, value }
-    return value
+    return resolve(raw)
   } catch {
-    policyCache = { mtimeMs: -1, value: DEFAULT_POLICY }
-    return DEFAULT_POLICY
+    return null
   }
+})()
+
+/** 读一份策略文件：{ value, mtimeMs, error }；文件不存在不算错误。 */
+function readPolicyFile(file) {
+  try {
+    const stat = statSync(file)
+    const value = JSON.parse(readFileSync(file, 'utf8'))
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return { value: null, mtimeMs: stat.mtimeMs, size: stat.size, error: '不是 JSON 对象' }
+    }
+    return { value, mtimeMs: stat.mtimeMs, size: stat.size, error: null }
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return { value: null, mtimeMs: -1, error: null }
+    return { value: null, mtimeMs: -1, error: text(error && error.message ? error.message : error, 120) }
+  }
+}
+
+/** 一层深合并：团队策略只覆盖它显式写了的键，其余保留本机值。 */
+function mergePolicyLayers(personal, team) {
+  if (!personal) return team || null
+  if (!team) return personal
+  const merged = Object.assign({}, personal)
+  for (const [key, value] of Object.entries(team)) {
+    const mine = merged[key]
+    const bothPlain =
+      mine && typeof mine === 'object' && !Array.isArray(mine) && value && typeof value === 'object' && !Array.isArray(value)
+    merged[key] = bothPlain ? Object.assign({}, mine, value) : value
+  }
+  return merged
+}
+
+/**
+ * 生效策略 + 来源。
+ *
+ * 顺序是 **默认 ← 本机 ← 团队**：阈值类规则通常由团队统一（同一套「多久算空转」），
+ * 个人只想改通知偏好——团队只覆盖它显式写了的键。
+ */
+function loadPolicy() {
+  const personal = readPolicyFile(POLICY_FILE)
+  const team = TEAM_POLICY_FILE ? readPolicyFile(TEAM_POLICY_FILE) : { value: null, mtimeMs: -1, error: null }
+  // size 一起进键：同一毫秒内改写两次时 mtime 不变，只看 mtime 会读旧值
+  const key =
+    String(personal.mtimeMs) + ':' + String(personal.size) + ':' + String(team.mtimeMs) + ':' + String(team.size) + ':' + String(TEAM_POLICY_FILE)
+  if (policyCache.key === key) return policyCache.value
+
+  const sources = []
+  const warnings = []
+  if (personal.value || personal.error) {
+    sources.push({ kind: 'personal', path: POLICY_FILE, mtimeMs: personal.mtimeMs, ok: personal.error === null })
+  }
+  if (personal.error) warnings.push('本机策略无法解析：' + personal.error)
+  if (TEAM_POLICY_FILE) {
+    sources.push({
+      kind: 'team',
+      path: TEAM_POLICY_FILE,
+      mtimeMs: team.mtimeMs,
+      ok: team.error === null && team.value !== null,
+    })
+    if (team.error) warnings.push('团队策略无法解析：' + team.error)
+  }
+
+  const merged = mergePolicyLayers(personal.value, team.value)
+  const value = merged ? normalizePolicy(merged) : DEFAULT_POLICY
+  const result = { policy: value, sources, warnings }
+  policyCache = { key, value: result }
+  return result
+}
+
+/** 只要生效策略（沿用既有调用点）。 */
+function readPolicy() {
+  return loadPolicy().policy
+}
+
+/** 测试用：丢掉缓存。 */
+function resetPolicyCache() {
+  policyCache = { key: '', value: null }
 }
 // #endregion
 
@@ -820,10 +894,19 @@ async function buildShiftReport(ctx, hours) {
   const lines = []
   lines.push('# 值守报告 · ' + dayOf(now) + ' ' + clockOf(now))
   lines.push('')
-  const effective = readPolicy()
+  const effectiveInfo = loadPolicy()
+  const effective = effectiveInfo.policy
+  // 让读报告的人知道这套规则是谁定的：本机、团队，还是两者叠加。
+  const policySourceNote =
+    effectiveInfo.sources.length === 0
+      ? ' · 来源：内置默认'
+      : ' · 来源：' +
+        effectiveInfo.sources
+          .map((source) => (source.kind === 'team' ? '团队共享' : '本机') + (source.ok ? '' : '（解析失败，已忽略）'))
+          .join(' + ')
   lines.push('- 范围：最近 ' + spanHours + ' 小时')
   lines.push(
-    '- 策略：闲置 ' + effective.idleMinutes + ' 分钟判空转 · 自动暂停' + (effective.autoPauseEnabled ? '开启（超 ' + effective.autoPauseAfterMinutes + ' 分钟）' : '关闭'),
+    '- 策略：闲置 ' + effective.idleMinutes + ' 分钟判空转 · 自动暂停' + (effective.autoPauseEnabled ? '开启（超 ' + effective.autoPauseAfterMinutes + ' 分钟）' : '关闭') + policySourceNote,
   )
   lines.push('- 塔台版本：' + PLUGIN_VERSION)
   lines.push(
@@ -1292,7 +1375,8 @@ async function collectSchedules(ctx, now) {
 
 async function buildSnapshot(ctx, options) {
   const now = Date.now()
-  const policy = readPolicy()
+  const policyInfo = loadPolicy()
+  const policy = policyInfo.policy
   const flights = collectFlights(ctx, now)
   const autoPaused = maybeAutoPause(ctx, flights, policy, now)
   const questions = listPendingQuestions(now)
@@ -1316,6 +1400,8 @@ async function buildSnapshot(ctx, options) {
     version: PLUGIN_VERSION,
     caps: collectCapabilities(ctx),
     policy,
+    policySources: policyInfo.sources,
+    policyWarnings: policyInfo.warnings,
     autoPaused,
     questions,
     stream: { seen: eventStream.seen, lastAt: eventStream.lastAt, lastType: eventStream.lastType },
@@ -1638,4 +1724,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts, noteSessionEvent, listPendingQuestions, PENDING_QUESTION_TTL, markdownToHtml }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts, noteSessionEvent, listPendingQuestions, PENDING_QUESTION_TTL, markdownToHtml, loadPolicy, TEAM_POLICY_FILE, resetPolicyCache }

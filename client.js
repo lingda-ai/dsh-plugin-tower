@@ -47,6 +47,7 @@ window.__ModuleLoader__.load({
         'section.jobs': '后台作业',
         'section.schedules': '定时航班',
         'caps.degraded': '{n} 项不可用',
+        'caps.policyWarn': '策略有警告',
         'caps.hint': '这些区块会显示为空，不是你操作错了——是宿主没有提供对应服务。',
         'caps.unavailable': '{name}不可用',
         'caps.ok': '宿主接口齐全',
@@ -199,6 +200,7 @@ window.__ModuleLoader__.load({
         'section.jobs': 'Background jobs',
         'section.schedules': 'Schedules',
         'caps.degraded': '{n} unavailable',
+        'caps.policyWarn': 'policy warning',
         'caps.hint': 'These sections show empty because the host does not provide the service — not because nothing is running.',
         'caps.unavailable': '{name} unavailable',
         'caps.ok': 'host services ok',
@@ -1810,7 +1812,8 @@ window.__ModuleLoader__.load({
         const recentExpanded = sectionOpen('recent', false)
         const caps = snapshot.caps || null
         const missingCaps = caps ? Object.keys(caps).filter((key) => !caps[key]) : []
-        const degraded = missingCaps.length > 0
+        const policyWarn = Array.isArray(snapshot.policyWarnings) ? snapshot.policyWarnings : []
+        const degraded = missingCaps.length > 0 || policyWarn.length > 0
         const loading = snapshot.loading && !snapshot.at
         const banner = action.error || (!snapshot.ok && snapshot.error ? snapshot.error : '')
 
@@ -2676,7 +2679,7 @@ window.__ModuleLoader__.load({
                       title: t('caps.hint'),
                       onClick: () => setCapsOpen(!capsOpen),
                     },
-                    t('caps.degraded', { n: missingCaps.length }),
+                    policyWarn.length > 0 ? t('caps.policyWarn') : t('caps.degraded', { n: missingCaps.length }),
                   )
                 : h('span', {
                     title: t('caps.ok'),
