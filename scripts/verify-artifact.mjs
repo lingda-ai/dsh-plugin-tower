@@ -159,6 +159,17 @@ const icon = readFileSync(join(artifact, 'icon.svg'), 'utf8')
 check(icon.includes('<svg') && icon.length < 256 * 1024, 'icon.svg 是 SVG 且 < 256KiB', String(icon.length))
 
 // ---------- 6) 把仓库测试拷进产物跑 ----------
+// 产物内测试也要在沙箱 env 里跑：否则会读到开发者的 HOME / DSH_HOME
+// （账本的 CI 就是被这种隐式依赖连红三次）。
+const sandboxEnv = (() => {
+  const root = join(process.env.TMPDIR || '/tmp', 'tower-artifact-env-' + process.pid)
+  const home = join(root, 'home')
+  const dshHome = join(root, 'dsh-home')
+  mkdirSync(join(home, '.config'), { recursive: true })
+  mkdirSync(dshHome, { recursive: true })
+  return Object.assign({}, process.env, { HOME: home, USERPROFILE: home, DSH_HOME: dshHome })
+})()
+
 if (existsSync(testsDir)) {
   const target = join(artifact, '__tests__')
   mkdirSync(target, { recursive: true })
@@ -167,7 +178,12 @@ if (existsSync(testsDir)) {
   let passed = 0
   for (const file of files) {
     try {
-      execFileSync(process.execPath, [join('__tests__', file)], { cwd: artifact, stdio: 'pipe', timeout: 60000 })
+      execFileSync(process.execPath, [join('__tests__', file)], {
+        cwd: artifact,
+        stdio: 'pipe',
+        timeout: 60000,
+        env: sandboxEnv,
+      })
       passed += 1
     } catch (error) {
       bad('产物内运行 ' + file, String(error.stdout || error.message).slice(0, 160))

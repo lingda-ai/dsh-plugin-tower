@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-tower",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Tower: a local control tower for live agents in the right sidebar — goals, background jobs, schedules and the interventions they need.",
   "author": "LingDaAi (lingda-ai)",
   "repository": {
@@ -27,7 +27,9 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "docs"
+    "docs",
+    "scripts",
+    "test"
   ],
   "icon": "./icon.svg",
   "keywords": [
@@ -60,7 +62,7 @@
     }
   },
   "scripts": {
-    "test": "for f in test/*.mjs; do node \"$f\" || exit 1; done",
+    "test": "node scripts/run-tests.mjs",
     "verify:artifact": "node scripts/verify-artifact.mjs --pack --tests ./test",
     "prepublishOnly": "node scripts/verify-artifact.mjs --pack --tests ./test"
   }

@@ -91,9 +91,20 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `test/ledger-bridge.mjs` | 账本可选集成：缺席 / 坏文件 / 多币种 / 双模 / 静态隔离守卫 |
 
 ```bash
-node test/smoke.mjs            # 单跑一个
+node scripts/run-tests.mjs                 # 全部（沙箱 env）
+node scripts/run-tests.mjs test route.mjs  # 单跑一个
 node scripts/verify-artifact.mjs --pack --tests ./test   # 产物闸门（发布前必跑）
 ```
+
+**测试不得依赖本机状态**（两次真事故换来的规则）：
+
+- 每个测试进程都由 `scripts/run-tests.mjs` 注入**全新的 `HOME` 与 `DSH_HOME`**；
+- 账本的 CI 曾连红三次，根因之一是测试隐式读取开发者本机的 `~/.dsh/ledger/pricing.json`；
+- 塔台同类问题：若测试读真实 `$DSH_HOME`，本机一旦有 `policy.json`，
+  「默认闲置阈值 20 分钟」这类断言就会本机失败、CI 通过；
+- 负向验证过：把 `DSH_HOME` 指向一份 `policy.json`（idleMinutes=5）裸跑 `test/route.mjs` 会 FAIL，
+  用沙箱跑者则 PASS；
+- 产物闸门用同样的沙箱 env 跑产物内测试。
 
 产物闸门会把仓库打成 tarball、解开，检查 manifest / patch / 入口 / 资源 / 隔离共 33 项，
 再把上面 12 个测试文件拷进产物目录跑一遍。`prepublishOnly` 已接入同一条命令。

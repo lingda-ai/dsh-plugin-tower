@@ -8,7 +8,7 @@
 
 | 项 | 值 |
 |---|---|
-| 包 | `dsh-plugin-tower@0.9.0` |
+| 包 | `dsh-plugin-tower@0.9.1` |
 | Loader 行 | `include:dsh-tower`（bundle `dsh-plugin-tower`） |
 | 模块代（当前） | `dsh-plugin-tower+0.9.0+412c974b1ecf` |
 | 历史模块代 | `0.1.0+fc656e3cdee5`、`0.1.0+681676529899`、`0.1.0+e52103ad2269`、`0.1.1+925f9d56b54d`、`0.1.2+6affd6c677dc`、`0.1.3+9a8aba3592e2`、`0.1.4+7456f05f6754`、`0.1.5+e046b59b0515`、`0.1.6+ffaede5583b8`、`0.2.0+0f0fa40a9051`、`0.2.1+50b17b476bed`、`0.3.0+191fc799cf0c`、`0.4.0+828a5b0628c3`、`0.5.0+d3a60a8835cc`、`0.6.0+5b1e3eb3ec55`、`0.7.0+9a7b7d37b267`、`0.7.1+5290074be3c2`、`0.7.2+e19cbf192cf9`、`0.8.0+9b10f97cb885` |
@@ -490,6 +490,22 @@ profile——需要 App 的 profile 切换器或 `dsh` CLI）。这一条只能�
 - `test/report.mjs` +5 条（`markdownToHtml` 的 h1/h2/li/strong/hr + `<script>` 被转义）
 - `test/route.mjs` +4 条（`format=html` 的 content-type、下载名、完整文档、独立样式）
 - 合计 **257 条**；产物闸门 33 项 + 14 个测试文件全过
+
+## 7.23 0.9.1 沙箱测试闸门（把两次教训固化）
+
+同一个月里踩了两次同一类坑：**测试/发布依赖了开发者本机的状态**。
+
+1. 账本 CI 连红三次：`archive` e2e 隐式读 `~/.dsh/ledger/pricing.json` 才算出价；
+2. 塔台同类：测试若读真实 `$DSH_HOME`，本机有 `policy.json` 时
+   「默认闲置阈值 20 分钟」的断言就会本机失败、CI 通过。
+
+固化方式：
+- `scripts/run-tests.mjs`：每个测试进程注入**全新 `HOME` 与 `DSH_HOME`**（含 XDG），跑完清理；
+- `npm test` 与产物闸门都走它；产物内测试同样在沙箱 env 里跑；
+- 产物包现在包含 `scripts/` 与 `test/`，装完可以自己 `npm test` 复验。
+
+**负向验证**：把 `DSH_HOME` 指向含 `{"idleMinutes":5}` 的目录裸跑 `test/route.mjs` →
+`FAIL: 快照带策略（默认 20 分钟）`；同一条测试走沙箱跑者 → 46 条全过。闸门不是摆设。
 
 ## 8. 你现在需要做的事
 
