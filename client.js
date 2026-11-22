@@ -118,6 +118,10 @@ window.__ModuleLoader__.load({
         'empty.flights.p3': '每天上午 9 点提醒我一次这件事的进度',
         'scope.all': '全机',
         'scope.mine': '本会话',
+        'sort.attention': '待处置优先',
+        'sort.recent': '最近活动',
+        'sort.name': '名称',
+        'sort.onlyAttention': '只看待处置',
         'chip.current': '当前',
         'act.snooze': '稍后',
         'act.snoozeHint': '30 分钟内不再提示（只存在本机）',
@@ -277,6 +281,10 @@ window.__ModuleLoader__.load({
         'empty.flights.p3': 'Remind me of the progress of this task every day at 9am',
         'scope.all': 'Fleet',
         'scope.mine': 'This session',
+        'sort.attention': 'Needs you first',
+        'sort.recent': 'Recent',
+        'sort.name': 'Name',
+        'sort.onlyAttention': 'Needs you only',
         'chip.current': 'current',
         'act.snooze': 'Later',
         'act.snoozeHint': 'Hide for 30 minutes (stored on this machine only)',
@@ -530,6 +538,18 @@ window.__ModuleLoader__.load({
 .twr-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px;
   border: 1px solid; font-size: 10px; line-height: 15px; white-space: nowrap; flex: 0 0 auto; }
 
+.twr-viewbar { display: flex; gap: 4px; align-items: center; margin: 2px 0 6px; flex-wrap: wrap; }
+.twr-viewbar > button { border: 0; background: transparent; color: ${T.text2}; font: inherit; font-size: 10px;
+  padding: 2px 6px; border-radius: 5px; cursor: pointer; }
+.twr-viewbar > button:hover { background: ${T.surface2}; color: ${T.text}; }
+.twr-viewbar > button[data-on="1"] { background: ${T.surface2}; color: ${T.text}; font-weight: 600; }
+.twr-group { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent;
+  color: ${T.text2}; font: inherit; font-size: 10.5px; padding: 5px 2px 3px; cursor: pointer; text-align: left; }
+.twr-group:hover { color: ${T.text}; }
+.twr-group__name { font-weight: 600; }
+.twr-group__meta { color: ${T.faint}; }
+.twr-group__urgent { background: ${T.bad}; color: #fff; border-radius: 999px; padding: 0 5px; font-size: 9px; }
+.twr-group__chev { margin-left: auto; color: ${T.faint}; }
 .twr-scope { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: ${T.surface2};
   border: 1px solid ${T.border}; }
 .twr-scope > button { border: 0; background: transparent; color: ${T.text2}; font: inherit; font-size: 10.5px;
@@ -795,6 +815,16 @@ window.__ModuleLoader__.load({
     const NOTIFY_KEY = 'dsh-tower.notify.v1'
     const NOTIFIED_KEY = 'dsh-tower.notified.v1'
     const NOTIFY_WINDOW_MS = 6 * 60 * 60 * 1000
+    /** 未处理的紧急项多久升级重提醒一次；最多提醒 ESCALATE_MAX 次。 */
+    const ESCALATE_AFTER_MS = 30 * 60 * 1000
+    const ESCALATE_MAX = 2
+
+    /** 兼容两种存储：老格式是时间戳数字，新格式是 {at, count}。 */
+    function notifiedEntryOf(value) {
+      if (typeof value === 'number') return { at: value, count: 1 }
+      if (value && typeof value === 'object') return { at: Number(value.at) || 0, count: Number(value.count) || 1 }
+      return { at: 0, count: 0 }
+    }
     /** 同一 tick 内多个组件（入口/面板）同时刷新时，防止重复弹。 */
     const notifiedNow = new Set()
 
@@ -822,6 +852,27 @@ window.__ModuleLoader__.load({
       }
     }
 
+    const VIEW_KEY = 'dsh-tower.view.v1'
+
+    function readView() {
+      try {
+        const raw = window.localStorage.getItem(VIEW_KEY)
+        const parsed = raw ? JSON.parse(raw) : null
+        const sort = parsed && (parsed.sort === 'recent' || parsed.sort === 'name') ? parsed.sort : 'attention'
+        return { sort, onlyAttention: Boolean(parsed && parsed.onlyAttention), collapsed: (parsed && parsed.collapsed) || {} }
+      } catch {
+        return { sort: 'attention', onlyAttention: false, collapsed: {} }
+      }
+    }
+
+    function writeView(value) {
+      try {
+        window.localStorage.setItem(VIEW_KEY, JSON.stringify(value))
+      } catch {
+        /* 隐私模式下不持久 */
+      }
+    }
+
     function readNotified() {
       try {
         const raw = window.localStorage.getItem(NOTIFIED_KEY)
@@ -837,7 +888,8 @@ window.__ModuleLoader__.load({
         const now = Date.now()
         const pruned = {}
         for (const key of Object.keys(map)) {
-          if (now - (Number(map[key]) || 0) < NOTIFY_WINDOW_MS) pruned[key] = map[key]
+          const entry = notifiedEntryOf(map[key])
+          if (entry.at > 0 && now - entry.at < NOTIFY_WINDOW_MS) pruned[key] = entry
         }
         window.localStorage.setItem(NOTIFIED_KEY, JSON.stringify(pruned))
       } catch {
@@ -846,7 +898,55 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 哪些待处置项值得弹通知：只弹 urgent、6 小时内同一个 key 只弹一次。
+     * 航班分组：按工作区归堆，组内按「待处置优先 / 最近活动 / 名称」排序。
+     * 只有一组时调用方直接平铺（避免给单会话用户增加噪音）。
+     */
+    function groupFlights(flights, sortMode, urgentSessions) {
+      const groups = new Map()
+      for (const flight of flights || []) {
+        const name = flight.cwdName || '未命名工作区'
+        if (!groups.has(name)) groups.set(name, [])
+        groups.get(name).push(flight)
+      }
+      const urgentRank = (flight) => (urgentSessions && urgentSessions.has(flight.sessionId) ? 0 : 1)
+      const byRecent = (a, b) => (Number(b.lastEventAt) || 0) - (Number(a.lastEventAt) || 0)
+      const compare =
+        sortMode === 'recent'
+          ? byRecent
+          : sortMode === 'name'
+            ? (a, b) => String(a.cwdName || '').localeCompare(String(b.cwdName || '')) || byRecent(a, b)
+            : (a, b) => urgentRank(a) - urgentRank(b) || byRecent(a, b)
+      const out = []
+      for (const [name, list] of groups) {
+        list.sort(compare)
+        out.push({
+          name,
+          flights: list,
+          urgent: list.filter((flight) => urgentSessions && urgentSessions.has(flight.sessionId)).length,
+        })
+      }
+      out.sort(
+        (a, b) =>
+          b.urgent - a.urgent ||
+          (Number(b.flights[0] && b.flights[0].lastEventAt) || 0) - (Number(a.flights[0] && a.flights[0].lastEventAt) || 0) ||
+          a.name.localeCompare(b.name),
+      )
+      return out
+    }
+
+    /** 已消失的待处置项要从"已提醒"里忘掉，否则同类问题以后不会再提醒。 */
+    function pruneSeen(seen, attention) {
+      const live = new Set((attention || []).map((item) => [item.code, item.sessionId, item.jobId || ''].join(':')))
+      const out = {}
+      for (const key of Object.keys(seen || {})) {
+        if (live.has(key)) out[key] = seen[key]
+      }
+      return out
+    }
+
+    /**
+     * 哪些待处置项值得弹通知：只弹 urgent；同一条 6 小时内不重复；
+     * 但**未处理满 30 分钟会升级重提醒**（最多 2 次），避免紧急项静默沉底。
      * 纯函数，便于离线断言（真机弹窗无法在无浏览器环境下验证）。
      */
     function notificationCandidates(attention, seen, now, onlyUrgent) {
@@ -856,9 +956,17 @@ window.__ModuleLoader__.load({
         if (!item) continue
         if (urgentOnly && item.level !== 'urgent') continue
         const key = [item.code, item.sessionId, item.jobId || ''].join(':')
-        const at = Number(seen && seen[key]) || 0
-        if (at > 0 && now - at < NOTIFY_WINDOW_MS) continue
-        out.push({ key, item })
+        const entry = notifiedEntryOf(seen && seen[key])
+        if (entry.at > 0) {
+          // 提醒过但还没人处理：到点升级一次（最多 ESCALATE_MAX 次），而不是永远沉默。
+          const escalated = entry.count < ESCALATE_MAX && now - entry.at >= ESCALATE_AFTER_MS
+          const quiet = now - entry.at < NOTIFY_WINDOW_MS
+          if (quiet && !escalated) continue
+          if (!escalated && entry.count >= ESCALATE_MAX) continue
+          out.push({ key, item, escalate: escalated, next: { at: now, count: entry.count + (escalated ? 1 : 0) } })
+          continue
+        }
+        out.push({ key, item, escalate: false, next: { at: now, count: 1 } })
       }
       return out
     }
@@ -1479,6 +1587,14 @@ window.__ModuleLoader__.load({
         const [refreshing, setRefreshing] = React.useState(false)
         const [logs, setLogs] = React.useState({})
         const [cursor, setCursor] = React.useState(-1)
+        const [view, setView] = React.useState(readView)
+        const updateView = React.useCallback((patch) => {
+          setView((prev) => {
+            const next = Object.assign({}, prev, patch)
+            writeView(next)
+            return next
+          })
+        }, [])
         // 破坏性动作两段确认：第一下上膛，4 秒内再点才执行
         const [armed, setArmed] = React.useState('')
         const armTimer = React.useRef(null)
@@ -1527,6 +1643,79 @@ window.__ModuleLoader__.load({
         const showScope = Boolean(ownSession) && allFlights.length > 1
         const activeScope = showScope ? scope : 'all'
         const flights = activeScope === 'mine' ? allFlights.filter((flight) => flight.sessionId === ownSession) : allFlights
+        const urgentSessions = new Set(
+          (snapshot.attention || []).filter((item) => item.level === 'urgent').map((item) => item.sessionId),
+        )
+        const shownFlights = view.onlyAttention ? flights.filter((flight) => urgentSessions.has(flight.sessionId)) : flights
+        const flightGroups = groupFlights(shownFlights, view.sort, urgentSessions)
+        const grouped = flightGroups.length > 1
+        // 每张卡片的公共 props；分组与平铺共用同一份，避免两处漂移。
+        function cardExtras(flight) {
+          return {
+            now,
+            action,
+            armed,
+            requestConfirm,
+            canCreate: Boolean(snapshot.caps && snapshot.caps.goalCreate),
+            createFor,
+            objective,
+            current: Boolean(ownSession) && flight.sessionId === ownSession,
+            onStartCreate: () => {
+              setCreateFor(flight.sessionId)
+              setObjective('')
+            },
+            onChangeObjective: setObjective,
+            onCancelCreate: () => {
+              setCreateFor('')
+              setObjective('')
+            },
+            onCopyGoalPrompt: () => onCopy('goal:' + flight.sessionId, t('empty.flights.p1')),
+            onCreate: () => {
+              const text = String(objective || '').trim()
+              if (text.length === 0) return
+              action.run('goal:create:' + flight.sessionId, {
+                action: 'goal.create',
+                sessionId: flight.sessionId,
+                objective: text,
+              })
+              setCreateFor('')
+              setObjective('')
+            },
+          }
+        }
+
+        // 分组渲染：只有多个工作区时才显示组头，单工作区保持平铺。
+        let cardIndex = 0
+        const flightNodes = []
+        for (const group of flightGroups) {
+          if (grouped) {
+            const collapsed = Boolean(view.collapsed[group.name])
+            flightNodes.push(
+              h(
+                'button',
+                {
+                  key: 'g:' + group.name,
+                  type: 'button',
+                  className: 'twr-group',
+                  onClick: () => updateView({ collapsed: Object.assign({}, view.collapsed, { [group.name]: !collapsed }) }),
+                },
+                h('span', { className: 'twr-group__name' }, group.name),
+                h('span', { className: 'twr-group__meta' }, String(group.flights.length) + ' 个'),
+                group.urgent > 0 ? h('span', { className: 'twr-group__urgent' }, String(group.urgent)) : null,
+                h('span', { className: 'twr-group__chev' }, collapsed ? '\u25B8' : '\u25BE'),
+              ),
+            )
+            if (collapsed) continue
+          }
+          for (const flight of group.flights) {
+            const index = cardIndex
+            cardIndex += 1
+            flightNodes.push(
+              h(FlightCard, Object.assign({ key: flight.sessionId, flight, focused: cursor === index }, cardExtras(flight))),
+            )
+          }
+        }
+
         const schedules =
           activeScope === 'mine'
             ? allSchedules.filter((entry) => entry.targetSessionId === ownSession)
@@ -2157,43 +2346,33 @@ window.__ModuleLoader__.load({
                     : h(EmptyGuide, { t, onCopy, copied })
                   : h(
                       'div',
-                      { className: 'twr-grid' },
-                      flights.map((flight, index) =>
-                        h(FlightCard, {
-                          key: flight.sessionId,
-                          flight,
-                          now,
-                          action,
-                          focused: cursor === index,
-                          armed,
-                          requestConfirm,
-                          canCreate: Boolean(snapshot.caps && snapshot.caps.goalCreate),
-                          createFor,
-                          objective,
-                          onStartCreate: () => {
-                            setCreateFor(flight.sessionId)
-                            setObjective('')
+                      null,
+                      h(
+                        'div',
+                        { className: 'twr-viewbar' },
+                        ['attention', 'recent', 'name'].map((mode) =>
+                          h(
+                            'button',
+                            {
+                              key: mode,
+                              type: 'button',
+                              'data-on': view.sort === mode ? '1' : '0',
+                              onClick: () => updateView({ sort: mode }),
+                            },
+                            t('sort.' + mode),
+                          ),
+                        ),
+                        h(
+                          'button',
+                          {
+                            type: 'button',
+                            'data-on': view.onlyAttention ? '1' : '0',
+                            onClick: () => updateView({ onlyAttention: !view.onlyAttention }),
                           },
-                          onChangeObjective: setObjective,
-                          onCancelCreate: () => {
-                            setCreateFor('')
-                            setObjective('')
-                          },
-                          onCopyGoalPrompt: () => onCopy('goal:' + flight.sessionId, t('empty.flights.p1')),
-                          onCreate: () => {
-                            const text = String(objective || '').trim()
-                            if (text.length === 0) return
-                            action.run('goal:create:' + flight.sessionId, {
-                              action: 'goal.create',
-                              sessionId: flight.sessionId,
-                              objective: text,
-                            })
-                            setCreateFor('')
-                            setObjective('')
-                          },
-                          current: Boolean(ownSession) && flight.sessionId === ownSession,
-                        }),
+                          t('sort.onlyAttention'),
+                        ),
                       ),
+                      h('div', { className: 'twr-grid' }, flightNodes),
                     ),
                 flights.length > 0 && !flights.some((flight) => flight.goal)
                   ? h('div', { style: { fontSize: 10, lineHeight: 1.6, color: T.faint } }, t('flights.hint.goal'))
@@ -2909,7 +3088,7 @@ window.__ModuleLoader__.load({
           if (!notifyOn) return
           if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
           if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && document.hasFocus()) return
-          const seen = readNotified()
+          const seen = pruneSeen(readNotified(), snapshot.attention)
           const fresh = notificationCandidates(snapshot.attention, seen, Date.now(), !snapshot.policy || snapshot.policy.notifyOnlyUrgent !== false)
           if (fresh.length === 0) return
           for (const row of fresh) {
@@ -2929,7 +3108,7 @@ window.__ModuleLoader__.load({
                 openSessionById(ctx, row.item.sessionId)
               }
               notifiedNow.add(row.key)
-              seen[row.key] = Date.now()
+              seen[row.key] = row.next || { at: Date.now(), count: 1 }
             } catch {
               /* 弹窗失败不影响面板 */
             }
@@ -3089,7 +3268,7 @@ window.__ModuleLoader__.load({
       inject: ['sidebarRightTabs'],
       apply,
       // 仅供离线测试使用：不参与宿主装配。
-      __test: { makePanel, makeTitle, makeEntry, makeT, createStore, notificationCandidates, renderReportMarkdown },
+      __test: { makePanel, makeTitle, makeEntry, makeT, createStore, notificationCandidates, pruneSeen, groupFlights, renderReportMarkdown },
     }
   },
 })

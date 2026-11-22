@@ -56,4 +56,34 @@ assert(candidates(attention, {}, now, true).length === 2, 'notifyOnlyUrgent=true
 assert(candidates([], {}, now).length === 0, '空列表不弹')
 assert(candidates(null, {}, now).length === 0, 'null 安全')
 
+// ---------- 升级重提醒：紧急项不该静默沉底 ----------
+const HOUR = 3600 * 1000
+const urgent = { level: 'urgent', code: 'job.failed', sessionId: 's1', jobId: 'j1', title: 'x' }
+const key = 'job.failed:s1:j1'
+
+let esc = candidates([urgent], {}, Date.now(), true)
+assert(esc.length === 1 && esc[0].escalate === false, '首次出现就提醒')
+assert(esc[0].next.count === 1, '首次记为 1 次')
+
+esc = candidates([urgent], { [key]: { at: Date.now() - 5 * 60 * 1000, count: 1 } }, Date.now(), true)
+assert(esc.length === 0, '5 分钟内不重复打扰')
+
+esc = candidates([urgent], { [key]: { at: Date.now() - 31 * 60 * 1000, count: 1 } }, Date.now(), true)
+assert(esc.length === 1 && esc[0].escalate === true, '满 30 分钟无人处理会升级提醒')
+assert(esc[0].next.count === 2, '升级后计为 2 次')
+
+esc = candidates([urgent], { [key]: { at: Date.now() - 31 * 60 * 1000, count: 2 } }, Date.now(), true)
+assert(esc.length === 0, '最多提醒 2 次，之后不再打扰')
+
+esc = candidates([urgent], { [key]: { at: Date.now() - 7 * HOUR, count: 2 } }, Date.now(), true)
+assert(esc.length === 0, '超过 2 次后不会因为时间久又复活')
+
+// 老格式（时间戳数字）仍然可读
+esc = candidates([urgent], { [key]: Date.now() - 1000 }, Date.now(), true)
+assert(esc.length === 0, '兼容老的数字格式')
+
+// 已解决的要遗忘，同类问题以后还能提醒
+const pruned = mod.__test.pruneSeen({ [key]: { at: Date.now(), count: 1 }, 'other:key': { at: Date.now(), count: 1 } }, [urgent])
+assert(Object.keys(pruned).length === 1 && pruned[key], 'pruneSeen 忘掉已消失的项')
+
 console.log(process.exitCode ? '\nNOTIFY FAILED' : '\nNOTIFY PASSED')
