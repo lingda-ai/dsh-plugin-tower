@@ -34,6 +34,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `GET ?closed=1&limit=8` | 已关闭会话的最后目标（只读复算持久化日志，不唤醒会话） |
 | `GET ?history=1&limit=20&window=86400000` | 跨会话作业历史：`jobs` `total` `byStatus` `scanned` |
 | `GET ?report=1&hours=24` | 值守报告：`markdown` + `generatedAt` + `windowHours` |
+| `GET ?report=1&format=html&hours=24` | 同一份报告的**单文件网页**（内联样式、无外部依赖），带下载文件名 |
 | `GET ?audit=1` / `?audit=1&verify=1` / `?audit=1&download=1` | 审计状态 / 重算哈希链 / 导出 ndjson |
 | `POST {"action": …}` | `goal.pause\|resume\|complete`、`job.kill`、`schedule.run`、`audit.enable\|disable` |
 
@@ -65,6 +66,8 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 5. **账本双模**：账本快照有 `window` 就用窗口增量，否则用累计并**写明口径**；
    绝不把两种口径相加，`covered:false` 一路带出成「窗口可能不完整」。
 6. **渲染兜底**：面板内部异常收敛成可读错误 + 重试，不白屏。
+8. **预览自己渲染**：面板用组件内的小渲染器把报告 Markdown 排成 h2/列表/加粗，**不引第三方 Markdown 库**
+   （只覆盖报告自己的语法，顺带避免 XSS 面）。
 7. **待答靠事件推断**：宿主没有待答只读接口，改从会话事件流配对（`tool/call` ↔ `tool/result`，`turn/end` 兜底，30 分钟 TTL）。
    快照里的 `stream.{seen,lastAt,lastType}` 是这条通道的自检：`seen>0` 说明订阅真的通了。
 
@@ -84,6 +87,7 @@ Client 入口必须是 **classic script**（`window.__ModuleLoader__.load({ id, 
 | `test/report.mjs` | 值守报告小节、中文标签、缺服务降级 |
 | `test/policy.mjs` | 策略默认值 / 夹取 / 热更新 / 自动暂停 |
 | `test/questions.mjs` | 待答队列：折叠 / 收口 / 兜底清除 / TTL / 只对在跑会话生效 |
+| `test/markdown.mjs` | 报告预览渲染：标题/列表/加粗/无残留记号/尖括号转义 |
 | `test/ledger-bridge.mjs` | 账本可选集成：缺席 / 坏文件 / 多币种 / 双模 / 静态隔离守卫 |
 
 ```bash

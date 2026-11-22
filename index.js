@@ -667,6 +667,116 @@ function auditVerify() {
 // #endregion
 
 // #region 值守报告（L3 治理：可交接的记录）
+/** 只会被我们自己的报告用到，因此只支持报告里出现的语法，避免引一个 Markdown 库。 */
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function inlineHtml(textValue) {
+  // 只处理 **加粗**，其余按纯文本转义
+  const parts = String(textValue).split('**')
+  return parts
+    .map((part, index) => (index % 2 === 1 ? '<strong>' + escapeHtml(part) + '</strong>' : escapeHtml(part)))
+    .join('')
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown || '').split('\n')
+  const out = []
+  let inList = false
+  const closeList = () => {
+    if (inList) {
+      out.push('</ul>')
+      inList = false
+    }
+  }
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      closeList()
+      out.push('<h2>' + inlineHtml(line.slice(3)) + '</h2>')
+      continue
+    }
+    if (line.startsWith('# ')) {
+      closeList()
+      out.push('<h1>' + inlineHtml(line.slice(2)) + '</h1>')
+      continue
+    }
+    if (line.trim() === '---') {
+      closeList()
+      out.push('<hr />')
+      continue
+    }
+    if (line.startsWith('  - ')) {
+      if (!inList) {
+        out.push('<ul>')
+        inList = true
+      }
+      out.push('<li class="sub">' + inlineHtml(line.slice(4)) + '</li>')
+      continue
+    }
+    if (line.startsWith('- ')) {
+      if (!inList) {
+        out.push('<ul>')
+        inList = true
+      }
+      out.push('<li>' + inlineHtml(line.slice(2)) + '</li>')
+      continue
+    }
+    if (line.trim().length === 0) {
+      closeList()
+      continue
+    }
+    closeList()
+    out.push('<p>' + inlineHtml(line) + '</p>')
+  }
+  closeList()
+  return out.join('\n')
+}
+
+/** 独立 HTML：单文件、内联样式、无外部依赖，发给别人直接双击就能看。 */
+function buildReportHtmlDocument(markdown, meta) {
+  const body = markdownToHtml(markdown)
+  return [
+    '<!doctype html>',
+    '<html lang="zh-CN"><head><meta charset="utf-8" />',
+    '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+    '<title>值守报告 · ' + escapeHtml(meta.generatedAt) + '</title>',
+    '<style>',
+    ':root { color-scheme: light dark; }',
+    '* { box-sizing: border-box; }',
+    'body { margin: 0; padding: 32px 18px 56px; background: #f6f7f9; color: #1f2328;',
+    '  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif; }',
+    '.sheet { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e6e8eb; border-radius: 14px;',
+    '  padding: 28px 30px 24px; box-shadow: 0 1px 3px rgba(16,24,40,.06); }',
+    'h1 { font-size: 20px; margin: 0 0 14px; letter-spacing: .01em; }',
+    'h2 { font-size: 13px; text-transform: none; letter-spacing: .06em; color: #57606a; margin: 26px 0 8px;',
+    '  padding-bottom: 6px; border-bottom: 1px solid #eef0f3; }',
+    'ul { margin: 0 0 4px; padding-left: 20px; }',
+    'li { margin: 3px 0; }',
+    'li.sub { list-style: circle; color: #57606a; font-size: 13px; }',
+    'p { margin: 6px 0; }',
+    'strong { font-weight: 600; }',
+    'hr { border: 0; border-top: 1px solid #eef0f3; margin: 24px 0 12px; }',
+    '.meta { color: #8b949e; font-size: 12px; margin-top: 18px; }',
+    '@media (prefers-color-scheme: dark) {',
+    '  body { background: #0d1117; color: #e6edf3; }',
+    '  .sheet { background: #161b22; border-color: #30363d; }',
+    '  h2 { color: #8b949e; border-color: #21262d; }',
+    '  li.sub, .meta { color: #8b949e; }',
+    '  hr { border-color: #21262d; }',
+    '}',
+    '</style></head><body><div class="sheet">',
+    body,
+    '<div class="meta">由塔台 ' + escapeHtml(meta.version) + ' 生成 · 本机只读快照 · 不含对话内容</div>',
+    '</div></body></html>',
+  ].join('\n')
+}
+// #endregion
+
 /** 报告是给人看的，不能漏出原始枚举。 */
 const VERB_LABELS = { pause: '暂停', resume: '继续', complete: '完成', kill: '终止', run: '立即执行', 'auto-pause': '自动暂停' }
 const JOB_LABELS = { completed: '已完成', killed: '已终止', failed: '失败', running: '运行中', stopping: '终止中' }
@@ -1427,7 +1537,22 @@ async function handleRequest(ctx, req, res) {
         return
       }
       if (url.searchParams.has('report')) {
-        sendJson(res, 200, await buildShiftReport(ctx, url.searchParams.get('hours')))
+        const report = await buildShiftReport(ctx, url.searchParams.get('hours'))
+        if (url.searchParams.get('format') === 'html') {
+          const stamp = new Date(Number(report.generatedAt) || Date.now()).toISOString().slice(0, 19).replace(/[:T]/g, '-')
+          const body = buildReportHtmlDocument(report.markdown, {
+            generatedAt: stamp,
+            version: report.version,
+          })
+          res.writeHead(200, {
+            'content-type': 'text/html; charset=utf-8',
+            'content-disposition': 'attachment; filename="tower-report-' + stamp + '.html"',
+            'cache-control': 'no-store',
+          })
+          res.end(body)
+          return
+        }
+        sendJson(res, 200, report)
         return
       }
       if (url.searchParams.has('audit')) {
@@ -1513,4 +1638,4 @@ export function apply(ctx) {
  * 仅供本仓库的离线冒烟测试使用：不参与宿主装配。
  * 有了它，「快照形状」和「动作分发」可以在没有真机 boot 的情况下被断言。
  */
-export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts, noteSessionEvent, listPendingQuestions, PENDING_QUESTION_TTL }
+export const __internal = { buildSnapshot, handleAction, collectAttention, projectGoal, projectJob, handleRequest, readJobTail, recentActions, collectCapabilities, readGoalFromEvents, collectClosedGoals, readJobsFromEvents, collectJobHistory, IDLE_MS, auditStatus, auditVerify, appendAudit, buildShiftReport, readPolicy, normalizePolicy, maybeAutoPause, readLedgerCosts, noteSessionEvent, listPendingQuestions, PENDING_QUESTION_TTL, markdownToHtml }

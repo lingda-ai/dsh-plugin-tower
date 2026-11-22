@@ -70,6 +70,7 @@ window.__ModuleLoader__.load({
         'report.copied': '已复制',
         'report.window': '最近 {n} 小时',
         'report.note': '把这段时间压成一页，可直接贴进周报或交接群',
+        'report.shareHtml': '分享 HTML',
         'section.audit': '审计',
         'audit.on': '记录中',
         'audit.off': '未开启',
@@ -221,6 +222,7 @@ window.__ModuleLoader__.load({
         'report.copied': 'copied',
         'report.window': 'last {n}h',
         'report.note': 'one page you can paste into a weekly report or handoff',
+        'report.shareHtml': 'Share HTML',
         'section.audit': 'Audit',
         'audit.on': 'recording',
         'audit.off': 'off',
@@ -679,6 +681,99 @@ window.__ModuleLoader__.load({
       }
 
       return { get, subscribe, refresh, wantFull }
+    }
+    // #endregion
+
+    // #region markdown（只渲染报告里会出现的语法，不引第三方库）
+    /** 行内：只处理 **加粗**。 */
+    function inlineNodes(text) {
+      const parts = String(text).split('**')
+      return parts.map((part, index) =>
+        index % 2 === 1
+          ? h('strong', { key: 'b' + index, style: { fontWeight: 600, color: T.text } }, part)
+          : part,
+      )
+    }
+
+    /** 报告 Markdown → React 节点：# / ## / - / 缩进子项 / --- / 段落。 */
+    function renderReportMarkdown(markdown) {
+      const lines = String(markdown || '').split('\n')
+      const blocks = []
+      let list = null
+      const flush = () => {
+        if (list !== null) {
+          blocks.push(h('ul', { key: 'ul' + blocks.length, style: { margin: '2px 0 6px', paddingLeft: 18 } }, list))
+          list = null
+        }
+      }
+      for (const line of lines) {
+        if (line.startsWith('## ')) {
+          flush()
+          blocks.push(
+            h(
+              'div',
+              {
+                key: 'h2' + blocks.length,
+                style: {
+                  fontSize: 10,
+                  letterSpacing: '0.06em',
+                  color: T.text2,
+                  fontWeight: 600,
+                  margin: '12px 0 5px',
+                  paddingBottom: 4,
+                  borderBottom: '1px solid ' + T.border,
+                },
+              },
+              line.slice(3),
+            ),
+          )
+          continue
+        }
+        if (line.startsWith('# ')) {
+          flush()
+          blocks.push(
+            h(
+              'div',
+              { key: 'h1' + blocks.length, style: { fontSize: 13, fontWeight: 600, color: T.text, margin: '0 0 6px' } },
+              line.slice(2),
+            ),
+          )
+          continue
+        }
+        if (line.trim() === '---') {
+          flush()
+          blocks.push(h('div', { key: 'hr' + blocks.length, style: { height: 1, background: T.border, margin: '10px 0 6px' } }))
+          continue
+        }
+        if (line.startsWith('  - ') || line.startsWith('- ')) {
+          const sub = line.startsWith('  - ')
+          const body = sub ? line.slice(4) : line.slice(2)
+          if (list === null) list = []
+          list.push(
+            h(
+              'li',
+              {
+                key: 'li' + blocks.length + ':' + list.length,
+                style: sub
+                  ? { marginLeft: 14, listStyle: 'circle', color: T.muted, fontSize: 10.5, lineHeight: 1.55 }
+                  : { fontSize: 11, lineHeight: 1.6, color: T.text2 },
+              },
+              inlineNodes(body),
+            ),
+          )
+          continue
+        }
+        if (line.trim().length === 0) {
+          flush()
+          continue
+        }
+        flush()
+        blocks.push(
+          h('div', { key: 'p' + blocks.length, style: { fontSize: 11, lineHeight: 1.6, color: T.text2, margin: '2px 0' } }, inlineNodes(line)),
+        )
+      }
+      flush()
+      return blocks
     }
     // #endregion
 
@@ -1545,6 +1640,19 @@ window.__ModuleLoader__.load({
             setReport((prev) => Object.assign({}, prev, { loading: false, loaded: true, error: String(error && error.message ? error.message : error) }))
           }
         }, [])
+
+        function shareReportHtml() {
+          try {
+            const link = document.createElement('a')
+            link.href = API + '?report=1&format=html&hours=24'
+            link.download = 'tower-report-' + new Date(report.generatedAt || Date.now()).toISOString().slice(0, 10) + '.html'
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+          } catch {
+            /* 下载失败不影响面板 */
+          }
+        }
 
         function downloadReport() {
           try {
@@ -2514,16 +2622,24 @@ window.__ModuleLoader__.load({
                             report.showPreview ? t('report.hidePreview') : t('report.preview'),
                           ),
                           h(Button, { tone: 'ghost', onClick: copyReport }, report.copied ? t('report.copied') : t('report.copy')),
+                          h(Button, { tone: 'ghost', onClick: shareReportHtml }, t('report.shareHtml')),
                           h(Button, { tone: 'accent', onClick: downloadReport }, t('report.download')),
                         ),
                         report.showPreview
                           ? h(
-                              'pre',
+                              'div',
                               {
-                                className: 'twr-log',
-                                style: { maxHeight: 260, fontSize: 9.5, lineHeight: 1.55, whiteSpace: 'pre-wrap' },
+                                className: 'twr-md',
+                                style: {
+                                  maxHeight: 300,
+                                  overflowY: 'auto',
+                                  padding: '9px 10px',
+                                  borderRadius: 8,
+                                  border: '1px solid ' + T.border,
+                                  background: T.surface,
+                                },
                               },
-                              report.markdown,
+                              renderReportMarkdown(report.markdown),
                             )
                           : null,
                         h('div', { style: { fontSize: 9.5, color: T.faint, lineHeight: 1.5 } }, t('report.note')),
@@ -2866,7 +2982,7 @@ window.__ModuleLoader__.load({
       inject: ['sidebarRightTabs'],
       apply,
       // 仅供离线测试使用：不参与宿主装配。
-      __test: { makePanel, makeTitle, makeEntry, makeT, createStore, notificationCandidates },
+      __test: { makePanel, makeTitle, makeEntry, makeT, createStore, notificationCandidates, renderReportMarkdown },
     }
   },
 })

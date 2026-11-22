@@ -97,5 +97,13 @@ const empty = await __internal.buildShiftReport({ get: () => null }, 24)
 assert(empty.ok === true, '服务全缺仍能生成报告')
 assert(empty.markdown.indexOf('- 无') >= 0, '缺失项写成「无」而不是报错')
 
+// 报告 → HTML：只支持报告里出现的语法，且必须转义（防止内容注入）
+const html = __internal.markdownToHtml('# 标题\n## 小节\n- 项 **粗**\n---\n<script>alert(1)</script>')
+assert(html.indexOf('<h1>标题</h1>') >= 0, 'HTML：一级标题')
+assert(html.indexOf('<h2>小节</h2>') >= 0, 'HTML：二级标题')
+assert(html.indexOf('<li>项 <strong>粗</strong></li>') >= 0, 'HTML：列表与加粗')
+assert(html.indexOf('<hr />') >= 0, 'HTML：分隔线')
+assert(html.indexOf('&lt;script&gt;') >= 0 && html.indexOf('<script>') < 0, 'HTML：尖括号被转义（不注入）')
+
 rmSync(sandbox, { recursive: true, force: true })
 console.log(process.exitCode ? '\nREPORT FAILED' : '\nREPORT PASSED')

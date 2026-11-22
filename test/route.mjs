@@ -139,7 +139,8 @@ async function call(method, url, headers, body) {
   } catch {
     parsed = null
   }
-  return { status: res.out.status, headers: res.out.headers, body: parsed }
+  // raw 给非 JSON 响应（例如 HTML 报告）用；body 仍是解析后的 JSON
+  return { status: res.out.status, headers: res.out.headers, body: parsed, raw: res.out.body }
 }
 
 const assert = (condition, message) => {
@@ -240,6 +241,12 @@ assert(report.status === 200 && report.body.ok === true, '值守报告 200')
 assert(String(report.body.markdown).indexOf('# 值守报告') === 0, '报告 markdown 以标题开头')
 assert(String(report.body.markdown).indexOf('## 五、审计') >= 0, '报告包含审计小节')
 assert(report.body.windowHours === 24, '报告窗口参数生效')
+
+const reportHtml = await call('GET', '/dsh-tower/api?report=1&format=html&hours=24', { host: '127.0.0.1:64700' })
+assert(String(reportHtml.headers['content-type']).indexOf('text/html') >= 0, 'HTML 报告 content-type 正确')
+assert(String(reportHtml.headers['content-disposition']).indexOf('attachment') >= 0, 'HTML 报告带下载文件名')
+assert(String(reportHtml.raw).indexOf('<!doctype html>') === 0, 'HTML 报告是完整文档')
+assert(String(reportHtml.raw).indexOf('class="sheet"') >= 0, 'HTML 报告带独立样式表(.sheet)')
 
 const put = await call('PUT', '/dsh-tower/api', { host: '127.0.0.1:64700' })
 assert(put.status === 405 && put.headers.allow === 'GET, HEAD, POST', '其它方法 405 并带 Allow')
